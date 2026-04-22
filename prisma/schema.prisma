@@ -1,0 +1,244 @@
+// Konfigurasi Database (Sesuaikan dengan DB Anda)
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. User & Role (Menjawab pertanyaan Anda tentang Admin)
+enum Role {
+  ADMIN
+  STAFF
+}
+
+model User {
+  id             Int                @id @default(autoincrement())
+  username       String             @unique
+  email          String             @unique
+  passwordHash   String
+  role           Role               @default(STAFF)
+  createdAt      DateTime           @default(now())
+  deletedAt      DateTime?
+  transactions   StockTransaction[]
+  salesOrders    SalesOrder[]
+  purchaseOrders PurchaseOrder[]
+  returns        SalesReturn[]
+
+  @@map("users") // Menggunakan snake_case di level database
+}
+
+// 2. Produk & Inventaris
+model Product {
+  id            Int       @id @default(autoincrement())
+  sku           String    @unique
+  name          String
+  description   String?   @db.Text
+  price         Decimal   @db.Decimal(12, 2)
+  averageCost   Decimal   @default(0) @db.Decimal(12, 2)
+  stockQuantity Int       @default(0)
+  reorderLevel  Int       @default(10)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  categoryId Int?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  supplierId Int?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  transactions       StockTransaction[]
+  orderItems         OrderItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@index([sku])
+  @@index([name])
+  @@map("products")
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?   @db.Text
+  deletedAt   DateTime?
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Supplier {
+  id             Int             @id @default(autoincrement())
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  address        String?         @db.Text
+  deletedAt      DateTime?
+  products       Product[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+// 3. Ledger Transaksi Stok
+enum TransactionType {
+  IN
+  OUT
+  ADJUSTMENT
+  RETURN
+}
+
+model StockTransaction {
+  id          Int             @id @default(autoincrement())
+  type        TransactionType
+  quantity    Int
+  referenceId String? // Bisa diisi Order Number
+  notes       String?         @db.Text
+  createdAt   DateTime        @default(now())
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([productId])
+  @@map("stock_transactions")
+}
+
+// 4. Pembelian dari Supplier
+enum PurchaseOrderStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id          Int                 @id @default(autoincrement())
+  orderNumber String              @unique
+  totalPrice  Decimal             @db.Decimal(12, 2)
+  status      PurchaseOrderStatus @default(PENDING)
+  notes       String?             @db.Text
+  createdAt   DateTime            @default(now())
+  receivedAt  DateTime?
+  deletedAt   DateTime?
+
+  supplierId Int
+  supplier   Supplier            @relation(fields: [supplierId], references: [id])
+  userId     Int
+  user       User                @relation(fields: [userId], references: [id])
+  items      PurchaseOrderItem[]
+
+  @@index([orderNumber])
+  @@index([createdAt])
+  @@index([supplierId])
+  @@index([userId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id        Int     @id @default(autoincrement())
+  quantity  Int
+  unitPrice Decimal @db.Decimal(12, 2)
+
+  orderId Int
+  order   PurchaseOrder @relation(fields: [orderId], references: [id])
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+// 5. Penjualan ke Customer
+enum SalesOrderStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model SalesOrder {
+  id          Int              @id @default(autoincrement())
+  orderNumber String           @unique
+  customerId  String? // ID customer (bisa nomor/timestamp, tanpa nama)
+  totalPrice  Decimal          @db.Decimal(12, 2)
+  totalCogs   Decimal          @default(0) @db.Decimal(12, 2)
+  totalProfit Decimal          @default(0) @db.Decimal(12, 2)
+  status      SalesOrderStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  deletedAt   DateTime?
+
+  userId  Int
+  user    User          @relation(fields: [userId], references: [id])
+  items   OrderItem[]
+  returns SalesReturn[]
+
+  @@index([orderNumber])
+  @@index([createdAt])
+  @@index([userId])
+  @@index([customerId])
+  @@map("sales_orders")
+}
+
+model OrderItem {
+  id               Int     @id @default(autoincrement())
+  quantity         Int
+  returnedQuantity Int     @default(0)
+  unitPrice        Decimal @db.Decimal(12, 2)
+  cogs             Decimal @default(0) @db.Decimal(12, 2)
+  profitMargin     Decimal @default(0) @db.Decimal(12, 2)
+
+  orderId Int
+  order   SalesOrder @relation(fields: [orderId], references: [id])
+
+  productId   Int
+  product     Product           @relation(fields: [productId], references: [id])
+  returnItems SalesReturnItem[]
+
+  @@map("order_items")
+}
+
+// 6. Retur Penjualan
+enum ReturnStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+model SalesReturn {
+  id           Int          @id @default(autoincrement())
+  returnNumber String       @unique
+  reason       String?      @db.Text
+  totalRefund  Decimal      @default(0) @db.Decimal(12, 2)
+  status       ReturnStatus @default(PENDING)
+  createdAt    DateTime     @default(now())
+
+  salesOrderId Int
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  items SalesReturnItem[]
+
+  @@index([returnNumber])
+  @@index([salesOrderId])
+  @@map("sales_returns")
+}
+
+model SalesReturnItem {
+  id           Int     @id @default(autoincrement())
+  quantity     Int
+  refundAmount Decimal @db.Decimal(12, 2)
+
+  returnId Int
+  return   SalesReturn @relation(fields: [returnId], references: [id])
+
+  orderItemId Int
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@map("sales_return_items")
+}

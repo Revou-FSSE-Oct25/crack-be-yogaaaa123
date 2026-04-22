@@ -1,0 +1,84 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Query,
+  Patch,
+} from '@nestjs/common';
+import { SalesService } from './sales.service';
+import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+} from '@nestjs/swagger';
+import { SalesOrderStatus } from '@prisma/client';
+import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
+
+@ApiTags('sales')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('sales')
+export class SalesController {
+  constructor(private readonly salesService: SalesService) {}
+
+  @Post()
+  @ApiOperation({
+    summary: 'Create a completed sales order (deducts stock immediately)',
+  })
+  createSalesOrder(
+    @Body() createDto: CreateSalesOrderDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.salesService.createSalesOrder({
+      ...createDto,
+      userId: user.id,
+    });
+  }
+
+  @Post('pending')
+  @ApiOperation({
+    summary: 'Create a pending sales order (does not deduct stock)',
+  })
+  createPendingSalesOrder(
+    @Body() createDto: CreateSalesOrderDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.salesService.createPendingSalesOrder({
+      ...createDto,
+      userId: user.id,
+    });
+  }
+
+  @Patch(':id/complete')
+  @ApiOperation({ summary: 'Complete a pending sales order' })
+  completeSalesOrder(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.salesService.completeSalesOrder(+id, user.id);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all sales orders' })
+  @ApiQuery({ name: 'customerId', required: false })
+  @ApiQuery({ name: 'status', enum: SalesOrderStatus, required: false })
+  getSalesOrders(
+    @Query('customerId') customerId?: string,
+    @Query('status') status?: SalesOrderStatus,
+  ) {
+    return this.salesService.getSalesOrders({ customerId, status });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a sales order by id' })
+  getSalesOrderById(@Param('id') id: string) {
+    return this.salesService.getSalesOrderById(+id);
+  }
+}
