@@ -1,26 +1,31 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { TransactionType } from '@prisma/client';
+import { TransactionType, Prisma } from '@prisma/client';
+
+export interface LowStockProduct {
+  id: string;
+  sku: string;
+  name: string;
+  stockQuantity: number;
+  reorderLevel: number;
+  supplierName: string | null;
+}
 
 @Injectable()
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async adjustStock(
-    productId: number,
-    userId: number,
+    productId: string,
+    userId: string,
     quantityChange: number,
     type: TransactionType,
     referenceId?: string,
     notes?: string,
   ) {
-    const product = await this.prisma.product.findUnique({
+    await this.prisma.product.findUniqueOrThrow({
       where: { id: productId },
     });
-
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${productId} not found`);
-    }
 
     // Determine the operation based on type and quantityChange.
     // If it's an OUT transaction, we decrement. If IN, we increment.
@@ -61,7 +66,7 @@ export class InventoryService {
       });
 
       if (updatedProduct.stockQuantity < 0) {
-        throw new Error(
+        throw new BadRequestException(
           `Insufficient stock for product ID ${productId}. Stock cannot be negative.`,
         );
       }
@@ -70,18 +75,14 @@ export class InventoryService {
     });
   }
 
-  async checkStockAvailability(productId: number, requestedQuantity: number) {
-    const product = await this.prisma.product.findUnique({
+  async checkStockAvailability(productId: string, requestedQuantity: number) {
+    const product = await this.prisma.product.findUniqueOrThrow({
       where: { id: productId },
       select: { stockQuantity: true, name: true },
     });
 
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${productId} not found`);
-    }
-
     if (product.stockQuantity < requestedQuantity) {
-      throw new Error(
+      throw new BadRequestException(
         `Insufficient stock for product ${product.name}. Available: ${product.stockQuantity}, Requested: ${requestedQuantity}`,
       );
     }
@@ -89,8 +90,8 @@ export class InventoryService {
     return product;
   }
 
-  async checkReorderLevel(productId: number) {
-    const product = await this.prisma.product.findUnique({
+  async checkReorderLevel(productId: string) {
+    const product = await this.prisma.product.findUniqueOrThrow({
       where: { id: productId },
       select: {
         stockQuantity: true,
@@ -100,35 +101,32 @@ export class InventoryService {
       },
     });
 
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${productId} not found`);
-    }
-
     return {
       ...product,
       isBelowReorderLevel: product.stockQuantity <= product.reorderLevel,
     };
   }
 
-  async getLowStockProducts() {
-    return this.prisma.product.findMany({
-      where: {
-        stockQuantity: {
-          lte: this.prisma.product.fields.reorderLevel,
-        },
-      },
-      select: {
-        id: true,
-        sku: true,
-        name: true,
-        stockQuantity: true,
-        reorderLevel: true,
-        supplier: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+  /**
+   * Get all products where stockQuantity <= reorderLevel.
+   * Uses raw SQL because Prisma ORM doesn't support column-to-column comparison.
+   */
+  async getLowStockProducts(): Promise<LowStockProduct[]> {
+    return this.prisma.$queryRaw<LowStockProduct[]>(
+      Prisma.sql`
+        SELECT
+          p.id,
+          p.sku,
+          p.name,
+          p."stockQuantity",
+          p."reorderLevel",
+          s.name AS "supplierName"
+        FROM products p
+        LEFT JOIN suppliers s ON p."supplierId" = s.id
+        WHERE p."stockQuantity" <= p."reorderLevel"
+          AND p."deletedAt" IS NULL
+        ORDER BY p."stockQuantity" ASC
+      `,
+    );
   }
 }

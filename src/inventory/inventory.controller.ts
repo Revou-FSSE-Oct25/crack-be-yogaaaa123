@@ -42,6 +42,6 @@ export class InventoryController {
   @Get('check-reorder/:productId')
   @ApiOperation({ summary: 'Check if a specific product needs reorder' })
   checkReorderLevel(@Param('productId') productId: string) {
-    return this.inventoryService.checkReorderLevel(+productId);
+    return this.inventoryService.checkReorderLevel(productId);
   }
 }

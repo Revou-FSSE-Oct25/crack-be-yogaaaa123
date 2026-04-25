@@ -1,39 +1,102 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { InventoryService } from '../inventory/inventory.service';
 import { TransactionType, PurchaseOrderStatus, Prisma } from '@prisma/client';
 
 interface PurchaseOrderItem {
-  productId: number;
+  productId: string;
   quantity: number;
   unitPrice: string; // string to preserve Decimal precision
 }
 
 interface CreatePurchaseOrderDto {
   orderNumber: string;
-  supplierId: number;
-  userId: number;
+  supplierId: string;
+  userId: string;
   items: PurchaseOrderItem[];
   notes?: string;
 }
 
+// Shape dari item yang sudah ada di DB (saat receivePurchaseOrder)
+interface DbPurchaseOrderItem {
+  productId: string;
+  quantity: number;
+  unitPrice: Prisma.Decimal; // sudah Decimal dari DB
+}
+
 @Injectable()
 export class PurchaseService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly inventoryService: InventoryService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async createPurchaseOrder(data: CreatePurchaseOrderDto) {
-    // Calculate total price using Decimal to avoid floating-point errors
-    const totalPrice = data.items.reduce((acc, item) => {
+  private calculateTotalPrice(items: PurchaseOrderItem[]): Prisma.Decimal {
+    return items.reduce((acc, item) => {
       const unitPrice = new Prisma.Decimal(item.unitPrice);
       return acc.add(unitPrice.mul(item.quantity));
     }, new Prisma.Decimal(0));
+  }
 
-    // Create purchase order and transactions in a single database transaction
+  /**
+   * Private helper: proses stock IN dan update moving average cost untuk setiap item.
+   * Di-extract untuk menghindari duplikasi antara createPurchaseOrder & receivePurchaseOrder.
+   */
+  private async processReceivedItems(
+    items: DbPurchaseOrderItem[],
+    orderNumber: string,
+    userId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const productIds = items.map((i) => i.productId);
+    const products = await tx.product.findMany({
+      where: { id: { in: productIds } },
+    });
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    for (const item of items) {
+      // Prisma guarantee: foreign key ensures product exists since purchaseOrder insert succeeded
+      const product = productMap.get(item.productId)!;
+
+      const currentStock = product.stockQuantity;
+      const currentAvgCost = product.averageCost; // Already Prisma.Decimal
+      const incomingQty = item.quantity;
+      const incomingCost = item.unitPrice; // Already Prisma.Decimal
+
+      // Moving average cost menggunakan Decimal arithmetic (no floating-point error)
+      const totalValueOld = currentAvgCost.mul(currentStock);
+      const totalValueNew = incomingCost.mul(incomingQty);
+      const newTotalStock = currentStock + incomingQty;
+
+      const newAverageCost =
+        newTotalStock > 0
+          ? totalValueOld.add(totalValueNew).div(newTotalStock)
+          : incomingCost;
+
+      // Create IN stock transaction
+      await tx.stockTransaction.create({
+        data: {
+          type: TransactionType.IN,
+          quantity: item.quantity,
+          referenceId: orderNumber,
+          notes: 'Purchase Order Received',
+          productId: item.productId,
+          userId,
+        },
+      });
+
+      // Update product stock quantity dan average cost
+      await tx.product.update({
+        where: { id: item.productId },
+        data: {
+          stockQuantity: { increment: item.quantity },
+          averageCost: newAverageCost,
+        },
+      });
+    }
+  }
+
+  async createPurchaseOrder(data: CreatePurchaseOrderDto) {
+    const totalPrice = this.calculateTotalPrice(data.items);
+
     return this.prisma.$transaction(async (tx) => {
-      // Create purchase order
+      // Buat purchase order
       const purchaseOrder = await tx.purchaseOrder.create({
         data: {
           orderNumber: data.orderNumber,
@@ -53,66 +116,28 @@ export class PurchaseService {
         },
       });
 
-      // Process each item
-      for (const item of data.items) {
-        // Fetch current product to calculate moving average cost
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-        });
+      // Konversi items ke format DbPurchaseOrderItem untuk helper
+      const dbItems: DbPurchaseOrderItem[] = data.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: new Prisma.Decimal(item.unitPrice),
+      }));
 
-        if (!product) {
-          throw new Error(`Product with ID ${item.productId} not found`);
-        }
-
-        const currentStock = product.stockQuantity;
-        const currentAvgCost = product.averageCost; // Already Prisma.Decimal
-        const incomingQty = item.quantity;
-        const incomingCost = new Prisma.Decimal(item.unitPrice);
-
-        // Moving average cost using Decimal arithmetic (no floating-point error)
-        const totalValueOld = currentAvgCost.mul(currentStock);
-        const totalValueNew = incomingCost.mul(incomingQty);
-        const newTotalStock = currentStock + incomingQty;
-
-        const newAverageCost =
-          newTotalStock > 0
-            ? totalValueOld.add(totalValueNew).div(newTotalStock)
-            : incomingCost;
-
-        // Create IN stock transaction
-        await tx.stockTransaction.create({
-          data: {
-            type: TransactionType.IN,
-            quantity: item.quantity,
-            referenceId: purchaseOrder.orderNumber,
-            notes: 'Purchase Order Received',
-            productId: item.productId,
-            userId: data.userId,
-          },
-        });
-
-        // Update product stock quantity and average cost
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stockQuantity: { increment: item.quantity },
-            averageCost: newAverageCost,
-          },
-        });
-      }
+      await this.processReceivedItems(
+        dbItems,
+        purchaseOrder.orderNumber,
+        data.userId,
+        tx,
+      );
 
       return purchaseOrder;
     });
   }
 
   async createPendingPurchaseOrder(data: CreatePurchaseOrderDto) {
-    // Calculate total price using Decimal to avoid floating-point errors
-    const totalPrice = data.items.reduce((acc, item) => {
-      const unitPrice = new Prisma.Decimal(item.unitPrice);
-      return acc.add(unitPrice.mul(item.quantity));
-    }, new Prisma.Decimal(0));
+    const totalPrice = this.calculateTotalPrice(data.items);
 
-    // Create purchase order without stock transactions
+    // Buat purchase order tanpa stock transaction (status PENDING)
     return this.prisma.purchaseOrder.create({
       data: {
         orderNumber: data.orderNumber,
@@ -132,25 +157,18 @@ export class PurchaseService {
     });
   }
 
-  async receivePurchaseOrder(orderId: number, userId: number) {
-    const purchaseOrder = await this.prisma.purchaseOrder.findUnique({
+  async receivePurchaseOrder(orderId: string, userId: string) {
+    const purchaseOrder = await this.prisma.purchaseOrder.findUniqueOrThrow({
       where: { id: orderId },
       include: { items: true },
     });
 
-    if (!purchaseOrder) {
-      throw new NotFoundException(
-        `Purchase Order with ID ${orderId} not found`,
-      );
-    }
-
     if (purchaseOrder.status === PurchaseOrderStatus.RECEIVED) {
-      throw new Error(
+      throw new BadRequestException(
         `Purchase Order ${purchaseOrder.orderNumber} is already received`,
       );
     }
 
-    // Receive the order and process transactions
     return this.prisma.$transaction(async (tx) => {
       // Update order status
       const updatedOrder = await tx.purchaseOrder.update({
@@ -161,53 +179,13 @@ export class PurchaseService {
         },
       });
 
-      // Process each item
-      for (const item of purchaseOrder.items) {
-        // Fetch current product to calculate moving average cost
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-        });
-
-        if (!product) {
-          throw new Error(`Product with ID ${item.productId} not found`);
-        }
-
-        const currentStock = product.stockQuantity;
-        const currentAvgCost = product.averageCost; // Already Prisma.Decimal
-        const incomingQty = item.quantity;
-        const incomingCost = item.unitPrice; // Already Prisma.Decimal from DB
-
-        // Moving average cost using Decimal arithmetic (no floating-point error)
-        const totalValueOld = currentAvgCost.mul(currentStock);
-        const totalValueNew = incomingCost.mul(incomingQty);
-        const newTotalStock = currentStock + incomingQty;
-
-        const newAverageCost =
-          newTotalStock > 0
-            ? totalValueOld.add(totalValueNew).div(newTotalStock)
-            : incomingCost;
-
-        // Create IN stock transaction
-        await tx.stockTransaction.create({
-          data: {
-            type: TransactionType.IN,
-            quantity: item.quantity,
-            referenceId: updatedOrder.orderNumber,
-            notes: 'Purchase Order Received',
-            productId: item.productId,
-            userId,
-          },
-        });
-
-        // Update product stock quantity and average cost
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stockQuantity: { increment: item.quantity },
-            averageCost: newAverageCost,
-          },
-        });
-      }
+      // Proses setiap item menggunakan shared helper
+      await this.processReceivedItems(
+        purchaseOrder.items,
+        updatedOrder.orderNumber,
+        userId,
+        tx,
+      );
 
       return updatedOrder;
     });
@@ -216,7 +194,7 @@ export class PurchaseService {
   async getPurchaseOrders(options?: {
     skip?: number;
     take?: number;
-    supplierId?: number;
+    supplierId?: string;
     status?: PurchaseOrderStatus;
   }) {
     const where = {
@@ -227,7 +205,7 @@ export class PurchaseService {
     return this.prisma.purchaseOrder.findMany({
       where,
       skip: options?.skip,
-      take: options?.take,
+      take: options?.take ?? 50, // Default limit 50 untuk mencegah query tanpa batas
       orderBy: { createdAt: 'desc' },
       include: {
         supplier: {
@@ -257,8 +235,8 @@ export class PurchaseService {
     });
   }
 
-  async getPurchaseOrderById(id: number) {
-    const order = await this.prisma.purchaseOrder.findUnique({
+  async getPurchaseOrderById(id: string) {
+    return this.prisma.purchaseOrder.findUniqueOrThrow({
       where: { id },
       include: {
         supplier: {
@@ -291,17 +269,14 @@ export class PurchaseService {
         },
       },
     });
-
-    if (!order) {
-      throw new NotFoundException(`Purchase Order with ID ${id} not found`);
-    }
-
-    return order;
   }
 
-  async getSupplierPurchaseSummary(supplierId: number) {
+  async getSupplierPurchaseSummary(supplierId: string) {
     const purchaseOrders = await this.prisma.purchaseOrder.findMany({
-      where: { supplierId },
+      where: {
+        supplierId,
+        deletedAt: null, // Filter soft-deleted orders
+      },
       include: {
         items: {
           include: {
@@ -313,7 +288,7 @@ export class PurchaseService {
 
     const totalOrders = purchaseOrders.length;
 
-    // Use Decimal to sum totalSpent without floating-point error
+    // Gunakan Decimal untuk menjumlahkan totalSpent tanpa floating-point error
     const totalSpentDecimal = purchaseOrders.reduce(
       (sum, order) => sum.add(order.totalPrice),
       new Prisma.Decimal(0),
@@ -321,7 +296,7 @@ export class PurchaseService {
     const totalSpent = totalSpentDecimal.toNumber();
 
     const productsPurchased = new Map<
-      number,
+      string,
       { quantity: number; total: Prisma.Decimal }
     >();
 
@@ -349,5 +324,26 @@ export class PurchaseService {
         }),
       ),
     };
+  }
+
+  /**
+   * Cancel a PENDING purchase order.
+   * Only PENDING orders can be cancelled — no stock impact.
+   */
+  async cancelPurchaseOrder(orderId: string) {
+    const purchaseOrder = await this.prisma.purchaseOrder.findUniqueOrThrow({
+      where: { id: orderId },
+    });
+
+    if (purchaseOrder.status !== 'PENDING') {
+      throw new BadRequestException(
+        `Only PENDING orders can be cancelled. Current status: ${purchaseOrder.status}`,
+      );
+    }
+
+    return this.prisma.purchaseOrder.update({
+      where: { id: orderId },
+      data: { status: 'CANCELLED' },
+    });
   }
 }

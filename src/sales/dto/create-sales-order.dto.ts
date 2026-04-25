@@ -5,14 +5,15 @@ import {
   IsNumber,
   IsNumberString,
   IsOptional,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SalesOrderItemDto {
-  @ApiProperty({ example: 1 })
-  @IsNumber()
-  productId: number;
+  @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsUUID()
+  productId: string;
 
   @ApiProperty({ example: 2 })
   @IsNumber()
@@ -21,7 +22,8 @@ export class SalesOrderItemDto {
   @ApiProperty({
     example: '999.99',
     type: String,
-    description: 'Unit selling price (use string to preserve decimal precision)',
+    description:
+      'Unit selling price (use string to preserve decimal precision)',
   })
   @IsNumberString()
   unitPrice: string;

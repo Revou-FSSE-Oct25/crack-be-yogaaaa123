@@ -5,20 +5,25 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateReturnDto } from './dto/create-return.dto';
-import { TransactionType, ReturnStatus, OrderItem, Prisma } from '@prisma/client';
+import {
+  TransactionType,
+  ReturnStatus,
+  OrderItem,
+  Prisma,
+} from '@prisma/client';
 
 interface ReturnItemToCreate {
-  orderItemId: number;
+  orderItemId: string;
   quantity: number;
   refundAmount: Prisma.Decimal;
-  productId: number;
+  productId: string;
 }
 
 @Injectable()
 export class ReturnsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createReturn(data: CreateReturnDto, userId: number) {
+  async createReturn(data: CreateReturnDto, userId: string) {
     // 1. Fetch Sales Order and its items
     const salesOrder = await this.prisma.salesOrder.findUnique({
       where: { id: data.salesOrderId },
@@ -36,7 +41,7 @@ export class ReturnsService {
     }
 
     // 2. Validate return items
-    const orderItemsMap = new Map<number, OrderItem>(
+    const orderItemsMap = new Map<string, OrderItem>(
       salesOrder.items.map((i) => [i.id, i]),
     );
     let totalRefund = new Prisma.Decimal(0);
@@ -126,7 +131,7 @@ export class ReturnsService {
       for (const returnItem of returnItemsToCreate) {
         const orderItem = orderItemsMap.get(returnItem.orderItemId)!;
         const unitPrice = orderItem.unitPrice; // Prisma.Decimal
-        const cogs = orderItem.cogs;           // Prisma.Decimal
+        const cogs = orderItem.cogs; // Prisma.Decimal
         const itemProfitPerUnit = unitPrice.sub(cogs);
         returnedProfitMargin = returnedProfitMargin.add(
           itemProfitPerUnit.mul(returnItem.quantity),
@@ -156,8 +161,8 @@ export class ReturnsService {
     });
   }
 
-  async findOne(id: number) {
-    const salesReturn = await this.prisma.salesReturn.findUnique({
+  async findOne(id: string) {
+    return this.prisma.salesReturn.findUniqueOrThrow({
       where: { id },
       include: {
         items: {
@@ -171,9 +176,5 @@ export class ReturnsService {
         user: true,
       },
     });
-
-    if (!salesReturn)
-      throw new NotFoundException(`Sales Return ${id} not found`);
-    return salesReturn;
   }
 }

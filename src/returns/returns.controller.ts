@@ -35,6 +35,6 @@ export class ReturnsController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a return by id' })
   findOne(@Param('id') id: string) {
-    return this.returnsService.findOne(+id);
+    return this.returnsService.findOne(id);
   }
 }

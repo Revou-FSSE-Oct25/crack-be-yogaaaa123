@@ -19,14 +19,20 @@ async function main() {
   const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123';
   const staffPassword = process.env.DEFAULT_STAFF_PASSWORD || 'Staff@123';
 
-  // === 1. CLEANUP EXISTING DATA ===
+  // === 1. CLEANUP EXISTING DATA (respecting foreign key constraints) ===
   console.log('🧹 Cleaning up existing data...');
   await prisma.$transaction([
+    prisma.salesReturnItem.deleteMany(),
+    prisma.salesReturn.deleteMany(),
+    // Order items before parent orders
     prisma.orderItem.deleteMany(),
     prisma.purchaseOrderItem.deleteMany(),
+    // Orders
     prisma.salesOrder.deleteMany(),
     prisma.purchaseOrder.deleteMany(),
+    // Stock transactions
     prisma.stockTransaction.deleteMany(),
+    // Master data
     prisma.product.deleteMany(),
     prisma.category.deleteMany(),
     prisma.supplier.deleteMany(),
@@ -104,16 +110,21 @@ async function main() {
   });
   console.log('✅ Suppliers created.');
 
-  // === 5. CREATE PRODUCTS ===
+  // === 5. CREATE PRODUCTS (without initial stock — stock comes from PO) ===
   console.log('🛒 Creating Products...');
+
+  // Purchase prices (cost) for each product — used for averageCost calculation
+  const purchasePrices = [20.0, 70.0, 200.0, 3.5, 6.0, 120.0];
+
   const productsData = [
     {
       sku: 'SKU-ELEC-001',
       name: 'Wireless Mouse',
       description: 'Ergonomic wireless mouse with 2.4GHz receiver',
       price: 25.5,
-      stockQuantity: 50,
+      stockQuantity: 0, // Will be populated by purchase order
       reorderLevel: 10,
+      averageCost: 0, // Will be calculated when PO is received
       categoryId: electronics.id,
       supplierId: supplierA.id,
     },
@@ -122,8 +133,9 @@ async function main() {
       name: 'Mechanical Keyboard',
       description: 'RGB mechanical keyboard with Cherry MX switches',
       price: 85,
-      stockQuantity: 30,
+      stockQuantity: 0,
       reorderLevel: 5,
+      averageCost: 0,
       categoryId: electronics.id,
       supplierId: supplierA.id,
     },
@@ -132,8 +144,9 @@ async function main() {
       name: '27-inch Monitor',
       description: '4K UHD monitor with IPS panel',
       price: 250,
-      stockQuantity: 20,
+      stockQuantity: 0,
       reorderLevel: 5,
+      averageCost: 0,
       categoryId: electronics.id,
       supplierId: supplierA.id,
     },
@@ -142,8 +155,9 @@ async function main() {
       name: 'Notebook A5',
       description: 'Premium A5 notebook with 120 pages',
       price: 5,
-      stockQuantity: 100,
+      stockQuantity: 0,
       reorderLevel: 20,
+      averageCost: 0,
       categoryId: stationery.id,
       supplierId: supplierB.id,
     },
@@ -152,8 +166,9 @@ async function main() {
       name: 'Ballpoint Pens (Pack of 10)',
       description: 'Smooth-writing ballpoint pens in assorted colors',
       price: 8.5,
-      stockQuantity: 80,
+      stockQuantity: 0,
       reorderLevel: 15,
+      averageCost: 0,
       categoryId: stationery.id,
       supplierId: supplierB.id,
     },
@@ -162,8 +177,9 @@ async function main() {
       name: 'Ergonomic Office Chair',
       description: 'Adjustable office chair with lumbar support',
       price: 150,
-      stockQuantity: 15,
+      stockQuantity: 0,
       reorderLevel: 3,
+      averageCost: 0,
       categoryId: furniture.id,
       supplierId: supplierB.id,
     },
@@ -176,189 +192,268 @@ async function main() {
   }
   console.log(`✅ ${products.length} Products created.`);
 
-  // === 6. CREATE INITIAL STOCK TRANSACTIONS ===
-  console.log('📊 Creating Initial Stock Transactions...');
-  for (const product of products) {
-    await prisma.stockTransaction.create({
-      data: {
-        type: 'IN',
-        quantity: product.stockQuantity,
-        referenceId: 'INITIAL-STOCK',
-        notes: 'Initial inventory',
-        productId: product.id,
-        userId: adminUser.id,
-      },
-    });
-  }
-  console.log('✅ Stock Transactions created.');
+  // === 6. PURCHASE ORDERS (properly updates stock + averageCost) ===
+  console.log('📦 Processing Purchase Orders (with stock & averageCost)...');
 
-  // === 7. CREATE PURCHASE ORDERS ===
-  console.log('📦 Creating Purchase Orders...');
+  // Purchase Order from Supplier A — items: Mouse(50), Keyboard(30), Monitor(20)
+  const po1Items = [
+    { productId: products[0].id, quantity: 50, unitPrice: purchasePrices[0] },
+    { productId: products[1].id, quantity: 30, unitPrice: purchasePrices[1] },
+    { productId: products[2].id, quantity: 20, unitPrice: purchasePrices[2] },
+  ];
 
-  // Purchase Order from Supplier A
   const po1 = await prisma.purchaseOrder.create({
     data: {
       orderNumber: 'PO-1001',
-      totalPrice: 5250,
+      totalPrice: po1Items.reduce(
+        (sum, i) => sum + i.quantity * i.unitPrice,
+        0,
+      ),
       status: 'RECEIVED',
       notes: 'Initial stock purchase from TechNova',
       supplierId: supplierA.id,
       userId: adminUser.id,
       receivedAt: new Date(),
       items: {
-        create: [
-          { productId: products[0].id, quantity: 50, unitPrice: 20.0 },
-          { productId: products[1].id, quantity: 30, unitPrice: 70.0 },
-          { productId: products[2].id, quantity: 20, unitPrice: 200.0 },
-        ],
+        create: po1Items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+        })),
       },
     },
   });
-  console.log(`✅ Purchase Order ${po1.orderNumber} created.`);
 
-  // Purchase Order from Supplier B
+  // Update stock and averageCost for PO-1001 items
+  for (const item of po1Items) {
+    await prisma.product.update({
+      where: { id: item.productId },
+      data: {
+        stockQuantity: { increment: item.quantity },
+        averageCost: item.unitPrice, // First purchase — averageCost = purchase price
+      },
+    });
+    await prisma.stockTransaction.create({
+      data: {
+        type: 'IN',
+        quantity: item.quantity,
+        referenceId: po1.orderNumber,
+        notes: 'Purchase Order Received',
+        productId: item.productId,
+        userId: adminUser.id,
+      },
+    });
+  }
+  console.log(`✅ Purchase Order ${po1.orderNumber} created & stock updated.`);
+
+  // Purchase Order from Supplier B — items: Notebook(100), Pens(80), Chair(15)
+  const po2Items = [
+    { productId: products[3].id, quantity: 100, unitPrice: purchasePrices[3] },
+    { productId: products[4].id, quantity: 80, unitPrice: purchasePrices[4] },
+    { productId: products[5].id, quantity: 15, unitPrice: purchasePrices[5] },
+  ];
+
   const po2 = await prisma.purchaseOrder.create({
     data: {
       orderNumber: 'PO-1002',
-      totalPrice: 1775,
+      totalPrice: po2Items.reduce(
+        (sum, i) => sum + i.quantity * i.unitPrice,
+        0,
+      ),
       status: 'RECEIVED',
       notes: 'Office supplies purchase from Office Depot',
       supplierId: supplierB.id,
       userId: adminUser.id,
       receivedAt: new Date(),
       items: {
-        create: [
-          { productId: products[3].id, quantity: 100, unitPrice: 3.5 },
-          { productId: products[4].id, quantity: 80, unitPrice: 6.0 },
-          { productId: products[5].id, quantity: 15, unitPrice: 120.0 },
-        ],
+        create: po2Items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+        })),
       },
     },
   });
-  console.log(`✅ Purchase Order ${po2.orderNumber} created.`);
 
-  console.log('✅ Purchase Orders created.');
+  for (const item of po2Items) {
+    await prisma.product.update({
+      where: { id: item.productId },
+      data: {
+        stockQuantity: { increment: item.quantity },
+        averageCost: item.unitPrice,
+      },
+    });
+    await prisma.stockTransaction.create({
+      data: {
+        type: 'IN',
+        quantity: item.quantity,
+        referenceId: po2.orderNumber,
+        notes: 'Purchase Order Received',
+        productId: item.productId,
+        userId: adminUser.id,
+      },
+    });
+  }
+  console.log(`✅ Purchase Order ${po2.orderNumber} created & stock updated.`);
 
-  // === 8. CREATE SALES ORDERS ===
-  console.log('🛍️ Creating Sales Orders...');
+  // Reload products to get updated stock and averageCost
+  const updatedProducts: Product[] = [];
+  for (const p of products) {
+    const up = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
+    updatedProducts.push(up);
+  }
 
-  // Sales Order 1
+  // === 7. SALES ORDERS (with proper COGS and profit calculation) ===
+  console.log('🛍️ Creating Sales Orders (with COGS & profit)...');
+
+  // Sales Order 1: 2x Mouse + 1x Keyboard
+  const so1Items = [
+    { product: updatedProducts[0], quantity: 2, unitPrice: 25.5 },
+    { product: updatedProducts[1], quantity: 1, unitPrice: 85 },
+  ];
+
+  const so1TotalPrice = so1Items.reduce(
+    (sum, i) => sum + i.quantity * i.unitPrice,
+    0,
+  );
+  const so1TotalCogs = so1Items.reduce(
+    (sum, i) => sum + i.quantity * Number(i.product.averageCost),
+    0,
+  );
+  const so1TotalProfit = so1TotalPrice - so1TotalCogs;
+
   const so1 = await prisma.salesOrder.create({
     data: {
       orderNumber: 'SO-1001',
       customerId: 'CUST-001',
       status: 'COMPLETED',
-      totalPrice: 136, // 2x Mouse + 1x Keyboard
+      totalPrice: so1TotalPrice,
+      totalCogs: so1TotalCogs,
+      totalProfit: so1TotalProfit,
       userId: staffUser.id,
       items: {
-        create: [
-          { productId: products[0].id, quantity: 2, unitPrice: 25.5 },
-          { productId: products[1].id, quantity: 1, unitPrice: 85 },
-        ],
+        create: so1Items.map((i) => ({
+          productId: i.product.id,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          cogs: Number(i.product.averageCost) * i.quantity,
+          profitMargin:
+            (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
+        })),
       },
     },
   });
-  console.log(`✅ Sales Order ${so1.orderNumber} created.`);
 
-  // Sales Order 2
+  // Decrement stock for SO-1001
+  for (const item of so1Items) {
+    await prisma.product.update({
+      where: { id: item.product.id },
+      data: { stockQuantity: { decrement: item.quantity } },
+    });
+    await prisma.stockTransaction.create({
+      data: {
+        type: 'OUT',
+        quantity: item.quantity,
+        referenceId: so1.orderNumber,
+        notes: 'Sales Order Completed',
+        productId: item.product.id,
+        userId: staffUser.id,
+      },
+    });
+  }
+  console.log(
+    `✅ Sales Order ${so1.orderNumber} created (COGS: $${so1TotalCogs.toFixed(2)}, Profit: $${so1TotalProfit.toFixed(2)}).`,
+  );
+
+  // Sales Order 2: 5x Notebook + 1x Chair
+  const so2Items = [
+    { product: updatedProducts[3], quantity: 5, unitPrice: 5 },
+    { product: updatedProducts[5], quantity: 1, unitPrice: 150 },
+  ];
+
+  const so2TotalPrice = so2Items.reduce(
+    (sum, i) => sum + i.quantity * i.unitPrice,
+    0,
+  );
+  const so2TotalCogs = so2Items.reduce(
+    (sum, i) => sum + i.quantity * Number(i.product.averageCost),
+    0,
+  );
+  const so2TotalProfit = so2TotalPrice - so2TotalCogs;
+
   const so2 = await prisma.salesOrder.create({
     data: {
       orderNumber: 'SO-1002',
       customerId: 'CUST-002',
       status: 'COMPLETED',
-      totalPrice: 155, // 5x Notebook + 1x Chair
+      totalPrice: so2TotalPrice,
+      totalCogs: so2TotalCogs,
+      totalProfit: so2TotalProfit,
       userId: staffUser.id,
       items: {
-        create: [
-          { productId: products[3].id, quantity: 5, unitPrice: 5 },
-          { productId: products[5].id, quantity: 1, unitPrice: 150 },
-        ],
+        create: so2Items.map((i) => ({
+          productId: i.product.id,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          cogs: Number(i.product.averageCost) * i.quantity,
+          profitMargin:
+            (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
+        })),
       },
     },
   });
-  console.log(`✅ Sales Order ${so2.orderNumber} created.`);
 
-  // Sales Order 3 (Pending)
+  for (const item of so2Items) {
+    await prisma.product.update({
+      where: { id: item.product.id },
+      data: { stockQuantity: { decrement: item.quantity } },
+    });
+    await prisma.stockTransaction.create({
+      data: {
+        type: 'OUT',
+        quantity: item.quantity,
+        referenceId: so2.orderNumber,
+        notes: 'Sales Order Completed',
+        productId: item.product.id,
+        userId: staffUser.id,
+      },
+    });
+  }
+  console.log(
+    `✅ Sales Order ${so2.orderNumber} created (COGS: $${so2TotalCogs.toFixed(2)}, Profit: $${so2TotalProfit.toFixed(2)}).`,
+  );
+
+  // Sales Order 3 (Pending — no stock deduction)
+  const so3Items = [{ product: updatedProducts[2], quantity: 1, unitPrice: 250 }];
+  const so3TotalPrice = 250;
+  const so3TotalCogs =
+    1 * Number(updatedProducts[2].averageCost);
+  const so3TotalProfit = so3TotalPrice - so3TotalCogs;
+
   const so3 = await prisma.salesOrder.create({
     data: {
       orderNumber: 'SO-1003',
       customerId: 'CUST-003',
       status: 'PENDING',
-      totalPrice: 250,
+      totalPrice: so3TotalPrice,
+      totalCogs: so3TotalCogs,
+      totalProfit: so3TotalProfit,
       userId: staffUser.id,
       items: {
-        create: [{ productId: products[2].id, quantity: 1, unitPrice: 250 }],
+        create: so3Items.map((i) => ({
+          productId: i.product.id,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          cogs: Number(i.product.averageCost) * i.quantity,
+          profitMargin:
+            (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
+        })),
       },
     },
   });
   console.log(`✅ Sales Order ${so3.orderNumber} (PENDING) created.`);
 
-  console.log('✅ Sales Orders created.');
-
-  // === 9. UPDATE STOCK AFTER SALES ===
-  console.log('📊 Updating stock after sales...');
-
-  // Update stock for SO-1001
-  await prisma.product.update({
-    where: { id: products[0].id },
-    data: { stockQuantity: products[0].stockQuantity - 2 },
-  });
-  await prisma.product.update({
-    where: { id: products[1].id },
-    data: { stockQuantity: products[1].stockQuantity - 1 },
-  });
-
-  // Update stock for SO-1002
-  await prisma.product.update({
-    where: { id: products[3].id },
-    data: { stockQuantity: products[3].stockQuantity - 5 },
-  });
-  await prisma.product.update({
-    where: { id: products[5].id },
-    data: { stockQuantity: products[5].stockQuantity - 1 },
-  });
-
-  // Create stock transactions for sales
-  await prisma.stockTransaction.createMany({
-    data: [
-      {
-        type: 'OUT',
-        quantity: 2,
-        referenceId: 'SO-1001',
-        notes: 'Sales Order',
-        productId: products[0].id,
-        userId: staffUser.id,
-      },
-      {
-        type: 'OUT',
-        quantity: 1,
-        referenceId: 'SO-1001',
-        notes: 'Sales Order',
-        productId: products[1].id,
-        userId: staffUser.id,
-      },
-      {
-        type: 'OUT',
-        quantity: 5,
-        referenceId: 'SO-1002',
-        notes: 'Sales Order',
-        productId: products[3].id,
-        userId: staffUser.id,
-      },
-      {
-        type: 'OUT',
-        quantity: 1,
-        referenceId: 'SO-1002',
-        notes: 'Sales Order',
-        productId: products[5].id,
-        userId: staffUser.id,
-      },
-    ],
-  });
-
-  console.log('✅ Stock updated after sales.');
-
-  // === 10. DATABASE SUMMARY ===
+  // === 8. DATABASE SUMMARY ===
   console.log('\n🎉 Database Seeding Completed Successfully!');
   console.log('===========================================');
 
@@ -381,6 +476,24 @@ async function main() {
   );
   console.log(`   📊 Stock Transactions: ${stockTransactionCount}`);
 
+  // Show product stock & averageCost
+  console.log('\n📦 Product Stock & Cost Summary:');
+  const finalProducts = await prisma.product.findMany({
+    orderBy: { sku: 'asc' },
+    select: {
+      sku: true,
+      name: true,
+      price: true,
+      averageCost: true,
+      stockQuantity: true,
+    },
+  });
+  finalProducts.forEach((p) => {
+    console.log(
+      `   - ${p.sku}: ${p.name} | Stock: ${p.stockQuantity} | Price: $${Number(p.price)} | AvgCost: $${Number(p.averageCost)}`,
+    );
+  });
+
   console.log('\n👥 Customer Transactions:');
   const recentSales = await prisma.salesOrder.findMany({
     take: 3,
@@ -390,12 +503,14 @@ async function main() {
       customerId: true,
       status: true,
       totalPrice: true,
+      totalCogs: true,
+      totalProfit: true,
     },
   });
 
   recentSales.forEach((order) => {
     console.log(
-      `   - ${order.orderNumber}: Customer ${order.customerId}, Status: ${order.status}, Total: $${Number(order.totalPrice)}`,
+      `   - ${order.orderNumber}: Customer ${order.customerId}, Status: ${order.status}, Price: $${Number(order.totalPrice)}, COGS: $${Number(order.totalCogs)}, Profit: $${Number(order.totalProfit)}`,
     );
   });
 

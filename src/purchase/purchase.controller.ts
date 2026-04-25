@@ -69,19 +69,19 @@ export class PurchaseController {
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.purchaseService.receivePurchaseOrder(+id, user.id);
+    return this.purchaseService.receivePurchaseOrder(id, user.id);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all purchase orders' })
-  @ApiQuery({ name: 'supplierId', required: false, type: Number })
+  @ApiQuery({ name: 'supplierId', required: false, type: String })
   @ApiQuery({ name: 'status', enum: PurchaseOrderStatus, required: false })
   getPurchaseOrders(
     @Query('supplierId') supplierId?: string,
     @Query('status') status?: PurchaseOrderStatus,
   ) {
     return this.purchaseService.getPurchaseOrders({
-      supplierId: supplierId ? +supplierId : undefined,
+      supplierId: supplierId ? supplierId : undefined,
       status,
     });
   }
@@ -89,12 +89,19 @@ export class PurchaseController {
   @Get('supplier-summary/:supplierId')
   @ApiOperation({ summary: 'Get purchase summary for a supplier' })
   getSupplierSummary(@Param('supplierId') supplierId: string) {
-    return this.purchaseService.getSupplierPurchaseSummary(+supplierId);
+    return this.purchaseService.getSupplierPurchaseSummary(supplierId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a purchase order by id' })
   getPurchaseOrderById(@Param('id') id: string) {
-    return this.purchaseService.getPurchaseOrderById(+id);
+    return this.purchaseService.getPurchaseOrderById(id);
+  }
+
+  @Patch(':id/cancel')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Cancel a pending purchase order (Admin only)' })
+  cancelPurchaseOrder(@Param('id') id: string) {
+    return this.purchaseService.cancelPurchaseOrder(id);
   }
 }

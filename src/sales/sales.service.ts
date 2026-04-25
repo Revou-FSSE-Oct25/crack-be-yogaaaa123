@@ -1,86 +1,155 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { InventoryService } from '../inventory/inventory.service';
 import { TransactionType, SalesOrderStatus, Prisma } from '@prisma/client';
+import type { CreateSalesOrderDto as CreateSalesOrderDtoBase } from './dto/create-sales-order.dto';
 
-interface SalesOrderItem {
-  productId: number;
-  quantity: number;
-  unitPrice: string; // string to preserve Decimal precision
+// Extend DTO with server-side userId (injected by controller from JWT)
+interface CreateSalesOrderData extends CreateSalesOrderDtoBase {
+  userId: string;
 }
 
-interface CreateSalesOrderDto {
-  orderNumber: string;
-  customerId?: string;
-  userId: number;
-  items: SalesOrderItem[];
+// Alias for use in internal helpers
+interface SalesOrderItem {
+  productId: string;
+  quantity: number;
+  unitPrice: string;
+}
+
+// Shape of each item ready for DB insertion
+interface OrderItemData {
+  productId: string;
+  quantity: number;
+  unitPrice: Prisma.Decimal;
+  cogs: Prisma.Decimal; // total COGS untuk item ini (unitCost * quantity)
+  profitMargin: Prisma.Decimal; // total profit untuk item ini ((unitPrice - unitCost) * quantity)
+}
+
+// Aggregated result dari buildOrderItemsData
+interface OrderItemsBuildResult {
+  orderItemsToCreate: OrderItemData[];
+  totalCogs: Prisma.Decimal;
+  totalProfit: Prisma.Decimal;
+  totalPrice: Prisma.Decimal;
 }
 
 @Injectable()
 export class SalesService {
   private readonly logger = new Logger(SalesService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly inventoryService: InventoryService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async createSalesOrder(data: CreateSalesOrderDto) {
-    // Validate all items before processing
-    for (const item of data.items) {
-      await this.inventoryService.checkStockAvailability(
-        item.productId,
-        item.quantity,
-      );
-    }
+  /**
+   * Private helper: hitung COGS, profit, dan siapkan data order items.
+   * Di-extract untuk menghilangkan duplikasi antara createSalesOrder & createPendingSalesOrder.
+   */
+  private async buildOrderItemsData(
+    items: SalesOrderItem[],
+    tx: Prisma.TransactionClient,
+  ): Promise<OrderItemsBuildResult> {
+    const productIds = items.map((i) => i.productId);
+    const products = await tx.product.findMany({
+      where: { id: { in: productIds } },
+    });
+    const productMap = new Map(products.map((p) => [p.id, p]));
 
-    // Calculate total price using Decimal to avoid floating-point errors
-    const totalPrice = data.items.reduce((acc, item) => {
-      return acc.add(new Prisma.Decimal(item.unitPrice).mul(item.quantity));
-    }, new Prisma.Decimal(0));
+    let totalCogs = new Prisma.Decimal(0);
+    let totalProfit = new Prisma.Decimal(0);
+    let totalPrice = new Prisma.Decimal(0);
+    const orderItemsToCreate: OrderItemData[] = [];
 
-    // Create sales order and transactions in a single database transaction
-    return this.prisma.$transaction(async (tx) => {
-      let totalCogs = new Prisma.Decimal(0);
-      let totalProfit = new Prisma.Decimal(0);
-      const orderItemsToCreate: {
-        productId: number;
-        quantity: number;
-        unitPrice: Prisma.Decimal;
-        cogs: Prisma.Decimal;
-        profitMargin: Prisma.Decimal;
-      }[] = [];
-
-      const productIds = data.items.map((i) => i.productId);
-      const products = await tx.product.findMany({
-        where: { id: { in: productIds } },
-      });
-      const productMap = new Map(products.map((p) => [p.id, p]));
-
-      for (const item of data.items) {
-        const product = productMap.get(item.productId);
-        if (!product) throw new NotFoundException(`Product ${item.productId} not found`);
-
-        const unitCost = product.averageCost; // Already Prisma.Decimal
-        const itemUnitPrice = new Prisma.Decimal(item.unitPrice);
-
-        // Decimal arithmetic — no floating-point error
-        const itemCogs = unitCost.mul(item.quantity);
-        const itemProfitMargin = itemUnitPrice.sub(unitCost).mul(item.quantity);
-
-        totalCogs = totalCogs.add(itemCogs);
-        totalProfit = totalProfit.add(itemProfitMargin);
-
-        orderItemsToCreate.push({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: itemUnitPrice,
-          cogs: unitCost,
-          profitMargin: itemProfitMargin,
-        });
+    for (const item of items) {
+      const product = productMap.get(item.productId);
+      if (!product) {
+        throw new NotFoundException(`Product ${item.productId} not found`);
       }
 
-      // Create sales order
+      const unitCost = product.averageCost; // Already Prisma.Decimal
+      const itemUnitPrice = new Prisma.Decimal(item.unitPrice);
+
+      // Decimal arithmetic — no floating-point error
+      // cogs = unitCost * quantity (TOTAL cost untuk seluruh quantity item ini)
+      const itemCogs = unitCost.mul(item.quantity);
+      // profitMargin = (unitPrice - unitCost) * quantity (TOTAL profit item ini)
+      const itemProfitMargin = itemUnitPrice.sub(unitCost).mul(item.quantity);
+
+      totalCogs = totalCogs.add(itemCogs);
+      totalProfit = totalProfit.add(itemProfitMargin);
+      totalPrice = totalPrice.add(itemUnitPrice.mul(item.quantity));
+
+      orderItemsToCreate.push({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: itemUnitPrice,
+        cogs: itemCogs,
+        profitMargin: itemProfitMargin,
+      });
+    }
+
+    return { orderItemsToCreate, totalCogs, totalProfit, totalPrice };
+  }
+
+  /**
+   * Private helper: decrement stok dan buat StockTransaction OUT untuk setiap item.
+   * Menggunakan pessimistic check di dalam transaksi untuk race condition safety.
+   */
+  private async processStockOut(
+    items: { productId: string; quantity: number }[],
+    orderNumber: string,
+    userId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    for (const item of items) {
+      const updatedProduct = await tx.product.update({
+        where: { id: item.productId },
+        data: { stockQuantity: { decrement: item.quantity } },
+        select: { stockQuantity: true, reorderLevel: true, name: true },
+      });
+
+      // Pessimistic check: Jika stok jadi negatif, rollback transaksi
+      if (updatedProduct.stockQuantity < 0) {
+        throw new BadRequestException(
+          `Insufficient stock for product ${updatedProduct.name}. Requested: ${item.quantity}`,
+        );
+      }
+
+      // Buat OUT stock transaction
+      await tx.stockTransaction.create({
+        data: {
+          type: TransactionType.OUT,
+          quantity: item.quantity,
+          referenceId: orderNumber,
+          notes: 'Sales Order Completed',
+          productId: item.productId,
+          userId,
+        },
+      });
+
+      // Log warning HANYA JIKA stok baru saja melewati batas reorder level
+      const previousStock = updatedProduct.stockQuantity + item.quantity;
+      const isJustBelowReorderLevel =
+        previousStock > updatedProduct.reorderLevel &&
+        updatedProduct.stockQuantity <= updatedProduct.reorderLevel;
+
+      if (isJustBelowReorderLevel) {
+        this.logger.warn(
+          `Product "${updatedProduct.name}" stock (${updatedProduct.stockQuantity}) just dropped to or below reorder level (${updatedProduct.reorderLevel})!`,
+        );
+      }
+    }
+  }
+
+  async createSalesOrder(data: CreateSalesOrderData) {
+    return this.prisma.$transaction(async (tx) => {
+      // Build order items data (COGS, profit, price) — pre-check stok ditiadakan,
+      // pessimistic check di processStockOut sudah cukup dan lebih atomic
+      const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
+        await this.buildOrderItemsData(data.items, tx);
+
       const salesOrder = await tx.salesOrder.create({
         data: {
           orderNumber: data.orderNumber,
@@ -90,98 +159,27 @@ export class SalesService {
           totalCogs,
           totalProfit,
           userId: data.userId,
-          items: {
-            create: orderItemsToCreate,
-          },
+          items: { create: orderItemsToCreate },
         },
       });
 
-      // Process each item
-      for (const item of data.items) {
-        // Update product stock quantity and get updated values
-        const updatedProduct = await tx.product.update({
-          where: { id: item.productId },
-          data: { stockQuantity: { decrement: item.quantity } },
-          select: { stockQuantity: true, reorderLevel: true, name: true },
-        });
-
-        // Pessimistic check: If stock goes below 0, rollback the transaction
-        if (updatedProduct.stockQuantity < 0) {
-          throw new BadRequestException(
-            `Insufficient stock for product ${updatedProduct.name}. Requested: ${item.quantity}`,
-          );
-        }
-
-        // Create OUT stock transaction
-        await tx.stockTransaction.create({
-          data: {
-            type: TransactionType.OUT,
-            quantity: item.quantity,
-            referenceId: salesOrder.orderNumber,
-            notes: 'Sales Order Completed',
-            productId: item.productId,
-            userId: data.userId,
-          },
-        });
-
-        // Check reorder level using the updated data
-        if (updatedProduct.stockQuantity <= updatedProduct.reorderLevel) {
-          this.logger.warn(
-            `Product "${updatedProduct.name}" stock (${updatedProduct.stockQuantity}) is at or below reorder level (${updatedProduct.reorderLevel})`,
-          );
-        }
-      }
+      // Decrement stok dan buat stock transactions
+      await this.processStockOut(
+        data.items,
+        salesOrder.orderNumber,
+        data.userId,
+        tx,
+      );
 
       return salesOrder;
     });
   }
 
-  async createPendingSalesOrder(data: CreateSalesOrderDto) {
-    // Calculate total price using Decimal to avoid floating-point errors
-    const totalPrice = data.items.reduce((acc, item) => {
-      return acc.add(new Prisma.Decimal(item.unitPrice).mul(item.quantity));
-    }, new Prisma.Decimal(0));
-
-    // Create sales order without stock transactions
+  async createPendingSalesOrder(data: CreateSalesOrderData) {
     return this.prisma.$transaction(async (tx) => {
-      let totalCogs = new Prisma.Decimal(0);
-      let totalProfit = new Prisma.Decimal(0);
-      const orderItemsToCreate: {
-        productId: number;
-        quantity: number;
-        unitPrice: Prisma.Decimal;
-        cogs: Prisma.Decimal;
-        profitMargin: Prisma.Decimal;
-      }[] = [];
-
-      const productIds = data.items.map((i) => i.productId);
-      const products = await tx.product.findMany({
-        where: { id: { in: productIds } },
-      });
-      const productMap = new Map(products.map((p) => [p.id, p]));
-
-      for (const item of data.items) {
-        const product = productMap.get(item.productId);
-        if (!product) throw new NotFoundException(`Product ${item.productId} not found`);
-
-        const unitCost = product.averageCost; // Already Prisma.Decimal
-        const itemUnitPrice = new Prisma.Decimal(item.unitPrice);
-
-        // Decimal arithmetic — no floating-point error
-        const itemCogs = unitCost.mul(item.quantity);
-        const itemProfitMargin = itemUnitPrice.sub(unitCost).mul(item.quantity);
-
-        totalCogs = totalCogs.add(itemCogs);
-        totalProfit = totalProfit.add(itemProfitMargin);
-
-        orderItemsToCreate.push({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: itemUnitPrice,
-          cogs: unitCost,
-          profitMargin: itemProfitMargin,
-        });
-      }
+      // Build order items data — tidak proses stok karena status PENDING
+      const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
+        await this.buildOrderItemsData(data.items, tx);
 
       return tx.salesOrder.create({
         data: {
@@ -192,23 +190,17 @@ export class SalesService {
           totalCogs,
           totalProfit,
           userId: data.userId,
-          items: {
-            create: orderItemsToCreate,
-          },
+          items: { create: orderItemsToCreate },
         },
       });
     });
   }
 
-  async completeSalesOrder(orderId: number, userId: number) {
-    const salesOrder = await this.prisma.salesOrder.findUnique({
+  async completeSalesOrder(orderId: string, userId: string) {
+    const salesOrder = await this.prisma.salesOrder.findUniqueOrThrow({
       where: { id: orderId },
       include: { items: true },
     });
-
-    if (!salesOrder) {
-      throw new NotFoundException(`Sales Order with ID ${orderId} not found`);
-    }
 
     if (salesOrder.status === 'COMPLETED') {
       throw new BadRequestException(
@@ -216,57 +208,24 @@ export class SalesService {
       );
     }
 
-    // Validate stock availability
-    for (const item of salesOrder.items) {
-      await this.inventoryService.checkStockAvailability(
-        item.productId,
-        item.quantity,
-      );
-    }
-
-    // Complete the order and process transactions
     return this.prisma.$transaction(async (tx) => {
-      // Update order status
       const updatedOrder = await tx.salesOrder.update({
         where: { id: orderId },
         data: { status: 'COMPLETED' },
       });
 
-      // Process each item
-      for (const item of salesOrder.items) {
-        // Update product stock quantity and get updated values
-        const updatedProduct = await tx.product.update({
-          where: { id: item.productId },
-          data: { stockQuantity: { decrement: item.quantity } },
-          select: { stockQuantity: true, reorderLevel: true, name: true },
-        });
+      // Konversi OrderItem (dari DB) untuk helper stok
+      const itemsForStockOut = salesOrder.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+      }));
 
-        // Pessimistic check: If stock goes below 0, rollback the transaction
-        if (updatedProduct.stockQuantity < 0) {
-          throw new BadRequestException(
-            `Insufficient stock for product ${updatedProduct.name}. Requested: ${item.quantity}`,
-          );
-        }
-
-        // Create OUT stock transaction
-        await tx.stockTransaction.create({
-          data: {
-            type: TransactionType.OUT,
-            quantity: item.quantity,
-            referenceId: updatedOrder.orderNumber,
-            notes: 'Sales Order Completed',
-            productId: item.productId,
-            userId,
-          },
-        });
-
-        // Check reorder level using the updated data
-        if (updatedProduct.stockQuantity <= updatedProduct.reorderLevel) {
-          this.logger.warn(
-            `Product "${updatedProduct.name}" stock (${updatedProduct.stockQuantity}) is at or below reorder level (${updatedProduct.reorderLevel})`,
-          );
-        }
-      }
+      await this.processStockOut(
+        itemsForStockOut,
+        updatedOrder.orderNumber,
+        userId,
+        tx,
+      );
 
       return updatedOrder;
     });
@@ -286,7 +245,7 @@ export class SalesService {
     return this.prisma.salesOrder.findMany({
       where,
       skip: options?.skip,
-      take: options?.take,
+      take: options?.take ?? 50, // Default limit 50 untuk mencegah query tanpa batas
       orderBy: { createdAt: 'desc' },
       include: {
         user: {
@@ -309,8 +268,8 @@ export class SalesService {
     });
   }
 
-  async getSalesOrderById(id: number) {
-    const order = await this.prisma.salesOrder.findUnique({
+  async getSalesOrderById(id: string) {
+    return this.prisma.salesOrder.findUniqueOrThrow({
       where: { id },
       include: {
         user: {
@@ -333,11 +292,26 @@ export class SalesService {
         },
       },
     });
+  }
 
-    if (!order) {
-      throw new NotFoundException(`Sales Order with ID ${id} not found`);
+  /**
+   * Cancel a PENDING sales order.
+   * Only PENDING orders can be cancelled — no stock impact.
+   */
+  async cancelSalesOrder(orderId: string) {
+    const salesOrder = await this.prisma.salesOrder.findUniqueOrThrow({
+      where: { id: orderId },
+    });
+
+    if (salesOrder.status !== 'PENDING') {
+      throw new BadRequestException(
+        `Only PENDING orders can be cancelled. Current status: ${salesOrder.status}`,
+      );
     }
 
-    return order;
+    return this.prisma.salesOrder.update({
+      where: { id: orderId },
+      data: { status: 'CANCELLED' },
+    });
   }
 }

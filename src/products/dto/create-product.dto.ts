@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   Min,
+  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -24,7 +25,8 @@ export class CreateProductDto {
   @ApiProperty({
     example: '999.99',
     type: String,
-    description: 'Product selling price (use string to preserve decimal precision)',
+    description:
+      'Product selling price (use string to preserve decimal precision)',
   })
   @IsNumberString()
   price: string;
@@ -41,13 +43,13 @@ export class CreateProductDto {
   @IsOptional()
   reorderLevel?: number;
 
-  @ApiPropertyOptional({ example: 1 })
-  @IsNumber()
+  @ApiPropertyOptional({ example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsUUID()
   @IsOptional()
-  categoryId?: number;
+  categoryId?: string;
 
-  @ApiPropertyOptional({ example: 1 })
-  @IsNumber()
+  @ApiPropertyOptional({ example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsUUID()
   @IsOptional()
-  supplierId?: number;
+  supplierId?: string;
 }

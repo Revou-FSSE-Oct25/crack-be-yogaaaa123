@@ -4,17 +4,18 @@ import {
   ValidateNested,
   IsNumber,
   IsOptional,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ReturnItemDto {
   @ApiProperty({
-    example: 1,
+    example: '123e4567-e89b-12d3-a456-426614174000',
     description: 'ID of the specific OrderItem being returned',
   })
-  @IsNumber()
-  orderItemId: number;
+  @IsUUID()
+  orderItemId: string;
 
   @ApiProperty({ example: 1, description: 'Quantity to return' })
   @IsNumber()
@@ -27,11 +28,11 @@ export class CreateReturnDto {
   returnNumber: string;
 
   @ApiProperty({
-    example: 1,
+    example: '123e4567-e89b-12d3-a456-426614174000',
     description: 'ID of the SalesOrder this return belongs to',
   })
-  @IsNumber()
-  salesOrderId: number;
+  @IsUUID()
+  salesOrderId: string;
 
   @ApiPropertyOptional({ example: 'Customer received damaged item' })
   @IsString()

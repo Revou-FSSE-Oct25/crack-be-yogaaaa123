@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
@@ -19,15 +19,13 @@ export class SuppliersService {
     });
   }
 
-  async findOne(id: number) {
-    const supplier = await this.prisma.supplier.findUnique({
+  async findOne(id: string) {
+    return this.prisma.supplier.findUniqueOrThrow({
       where: { id, deletedAt: null },
     });
-    if (!supplier) throw new NotFoundException(`Supplier #${id} not found`);
-    return supplier;
   }
 
-  async update(id: number, updateSupplierDto: UpdateSupplierDto) {
+  async update(id: string, updateSupplierDto: UpdateSupplierDto) {
     await this.findOne(id);
     return this.prisma.supplier.update({
       where: { id },
@@ -35,7 +33,7 @@ export class SuppliersService {
     });
   }
 
-  async remove(id: number) {
+  async remove(id: string) {
     await this.findOne(id);
     return this.prisma.supplier.update({
       where: { id },

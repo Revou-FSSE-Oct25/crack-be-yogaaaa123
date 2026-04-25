@@ -1,11 +1,17 @@
-import { IsNumber, IsEnum, IsString, IsOptional } from 'class-validator';
+import {
+  IsNumber,
+  IsEnum,
+  IsString,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TransactionType } from '@prisma/client';
 
 export class AdjustStockDto {
-  @ApiProperty({ example: 1 })
-  @IsNumber()
-  productId: number;
+  @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsUUID()
+  productId: string;
 
   @ApiProperty({
     example: 10,

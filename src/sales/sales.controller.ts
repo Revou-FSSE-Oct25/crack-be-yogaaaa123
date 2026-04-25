@@ -8,6 +8,9 @@ import {
   Query,
   Patch,
 } from '@nestjs/common';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '@prisma/client';
 import { SalesService } from './sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -23,7 +26,7 @@ import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.
 
 @ApiTags('sales')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('sales')
 export class SalesController {
   constructor(private readonly salesService: SalesService) {}
@@ -62,7 +65,7 @@ export class SalesController {
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.salesService.completeSalesOrder(+id, user.id);
+    return this.salesService.completeSalesOrder(id, user.id);
   }
 
   @Get()
@@ -79,6 +82,13 @@ export class SalesController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a sales order by id' })
   getSalesOrderById(@Param('id') id: string) {
-    return this.salesService.getSalesOrderById(+id);
+    return this.salesService.getSalesOrderById(id);
+  }
+
+  @Patch(':id/cancel')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Cancel a pending sales order (Admin only)' })
+  cancelSalesOrder(@Param('id') id: string) {
+    return this.salesService.cancelSalesOrder(id);
   }
 }
