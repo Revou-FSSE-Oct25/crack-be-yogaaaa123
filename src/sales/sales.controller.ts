@@ -72,11 +72,20 @@ export class SalesController {
   @ApiOperation({ summary: 'Get all sales orders' })
   @ApiQuery({ name: 'customerId', required: false })
   @ApiQuery({ name: 'status', enum: SalesOrderStatus, required: false })
+  @ApiQuery({ name: 'skip', required: false, type: Number })
+  @ApiQuery({ name: 'take', required: false, type: Number })
   getSalesOrders(
     @Query('customerId') customerId?: string,
     @Query('status') status?: SalesOrderStatus,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
   ) {
-    return this.salesService.getSalesOrders({ customerId, status });
+    return this.salesService.getSalesOrders({
+      customerId,
+      status,
+      skip: skip !== undefined ? parseInt(skip, 10) : undefined,
+      take: take !== undefined ? parseInt(take, 10) : undefined,
+    });
   }
 
   @Get(':id')

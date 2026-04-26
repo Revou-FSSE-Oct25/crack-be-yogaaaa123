@@ -1,11 +1,19 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
@@ -41,7 +49,7 @@ export class UsersService {
     return result;
   }
 
-  async findAll() {
+  async findAll(skip?: number, take?: number) {
     return this.prisma.user.findMany({
       select: {
         id: true,
@@ -53,6 +61,9 @@ export class UsersService {
       where: {
         deletedAt: null,
       },
+      skip,
+      take: take ?? 50,
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -63,8 +74,9 @@ export class UsersService {
   }
 
   async findByUsername(username: string) {
+    // SECURITY: filter soft-deleted users — they must not be able to login
     return this.prisma.user.findUnique({
-      where: { username },
+      where: { username, deletedAt: null },
     });
   }
 
@@ -72,11 +84,18 @@ export class UsersService {
     // Verify user exists and is not soft-deleted
     await this.findOne(id);
 
+    // Explicit field mapping — never pass raw DTO to prevent accidental exposure of sensitive fields
+    const updateData: { email?: string; role?: UpdateUserDto['role'] } = {};
+    if (updateUserDto.email !== undefined)
+      updateData.email = updateUserDto.email;
+    if (updateUserDto.role !== undefined) updateData.role = updateUserDto.role;
+
     const user = await this.prisma.user.update({
       where: { id },
-      data: updateUserDto,
+      data: updateData,
     });
 
+    this.logger.log(`User ${id} updated`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash: _, ...result } = user;
     return result;
@@ -98,5 +117,34 @@ export class UsersService {
         deletedAt: true,
       },
     });
+  }
+
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    // Fetch full user record (including passwordHash) for verification
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId, deletedAt: null },
+    });
+
+    const isCurrentPasswordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, salt);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newPasswordHash },
+    });
+
+    this.logger.log(`Password changed for user ${userId}`);
+    return { message: 'Password changed successfully' };
   }
 }

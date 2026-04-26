@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { PrismaModule } from './prisma.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -13,6 +11,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { SalesModule } from './sales/sales.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { ReturnsModule } from './returns/returns.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -39,10 +38,10 @@ import { ReturnsModule } from './returns/returns.module';
     SalesModule,
     PurchaseModule,
     ReturnsModule,
+    HealthModule,
   ],
-  controllers: [AppController],
+  controllers: [],
   providers: [
-    AppService,
     // Aktifkan ThrottlerGuard secara global
     {
       provide: APP_GUARD,

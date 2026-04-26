@@ -66,7 +66,6 @@ async function main() {
     `✅ Users created: ${adminUser.username} & ${staffUser.username}.`,
   );
 
-  // === 3. CREATE CATEGORIES ===
   console.log('📦 Creating Categories...');
   const electronics = await prisma.category.create({
     data: {

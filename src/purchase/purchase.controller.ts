@@ -76,13 +76,19 @@ export class PurchaseController {
   @ApiOperation({ summary: 'Get all purchase orders' })
   @ApiQuery({ name: 'supplierId', required: false, type: String })
   @ApiQuery({ name: 'status', enum: PurchaseOrderStatus, required: false })
+  @ApiQuery({ name: 'skip', required: false, type: Number })
+  @ApiQuery({ name: 'take', required: false, type: Number })
   getPurchaseOrders(
     @Query('supplierId') supplierId?: string,
     @Query('status') status?: PurchaseOrderStatus,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
   ) {
     return this.purchaseService.getPurchaseOrders({
       supplierId: supplierId ? supplierId : undefined,
       status,
+      skip: skip !== undefined ? parseInt(skip, 10) : undefined,
+      take: take !== undefined ? parseInt(take, 10) : undefined,
     });
   }
 

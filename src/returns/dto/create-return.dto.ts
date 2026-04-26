@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsUUID,
+  Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -19,6 +20,7 @@ export class ReturnItemDto {
 
   @ApiProperty({ example: 1, description: 'Quantity to return' })
   @IsNumber()
+  @Min(1)
   quantity: number;
 }
 

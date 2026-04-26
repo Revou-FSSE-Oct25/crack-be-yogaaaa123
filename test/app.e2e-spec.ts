@@ -1,29 +1,85 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
-import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import * as request from 'supertest';
+import { AppModule } from '../src/app.module';
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+describe('Auth (e2e)', () => {
+  let app: INestApplication;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  afterAll(async () => {
+    await app.close();
   });
 
-  afterEach(async () => {
-    await app.close();
+  describe('/health (GET)', () => {
+    it('should return status ok', () => {
+      return request(app.getHttpServer())
+        .get('/health')
+        .expect((res) => {
+          expect(res.status).toBeLessThan(503);
+          expect(res.body.status).toBeDefined();
+        });
+    });
+  });
+
+  describe('/auth/login (POST)', () => {
+    it('should reject login with invalid credentials', () => {
+      return request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ username: 'nonexistent', password: 'wrongpassword' })
+        .expect(401);
+    });
+
+    it('should reject login with missing fields (validation)', () => {
+      return request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ username: 'onlyusername' }) // missing password
+        .expect(400);
+    });
+
+    it('should reject login with password too short', () => {
+      return request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ username: 'admin1', password: '123' }) // MinLength(6) fails
+        .expect(400);
+    });
+  });
+
+  describe('Protected routes (no token)', () => {
+    it('GET /sales should return 401 without token', () => {
+      return request(app.getHttpServer()).get('/sales').expect(401);
+    });
+
+    it('GET /purchase should return 401 without token', () => {
+      return request(app.getHttpServer()).get('/purchase').expect(401);
+    });
+
+    it('GET /users should return 401 without token', () => {
+      return request(app.getHttpServer()).get('/users').expect(401);
+    });
+
+    it('GET /inventory/low-stock should return 401 without token', () => {
+      return request(app.getHttpServer())
+        .get('/inventory/low-stock')
+        .expect(401);
+    });
   });
 });

@@ -2,13 +2,14 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import { NestFactory, HttpAdapterHost } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
 
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new PrismaClientExceptionFilter(httpAdapter));
@@ -44,7 +45,8 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Swagger UI is running on: http://localhost:${port}/api`);
+  logger.log(`Application is running on: http://localhost:${port}`);
+  logger.log(`Swagger UI is running on: http://localhost:${port}/api`);
+  logger.log(`Health check at: http://localhost:${port}/health`);
 }
 void bootstrap();

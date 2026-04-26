@@ -4,6 +4,7 @@ import {
   IsString,
   IsOptional,
   IsUUID,
+  NotEquals,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TransactionType } from '@prisma/client';
@@ -15,9 +16,10 @@ export class AdjustStockDto {
 
   @ApiProperty({
     example: 10,
-    description: 'Positive to add stock, negative to remove',
+    description: 'Positive to add stock, negative to remove. Cannot be 0.',
   })
   @IsNumber()
+  @NotEquals(0, { message: 'quantityChange must not be 0' })
   quantityChange: number;
 
   @ApiProperty({ enum: TransactionType })

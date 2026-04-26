@@ -197,18 +197,27 @@ export class SalesService {
   }
 
   async completeSalesOrder(orderId: string, userId: string) {
-    const salesOrder = await this.prisma.salesOrder.findUniqueOrThrow({
-      where: { id: orderId },
-      include: { items: true },
-    });
-
-    if (salesOrder.status === 'COMPLETED') {
-      throw new BadRequestException(
-        `Sales Order ${salesOrder.orderNumber} is already completed`,
-      );
-    }
-
     return this.prisma.$transaction(async (tx) => {
+      // Atomic status check + update — prevents race conditions from concurrent requests.
+      // If the order is not in PENDING state, findFirst returns null and we throw.
+      const salesOrder = await tx.salesOrder.findFirst({
+        where: { id: orderId, status: 'PENDING' },
+        include: { items: true },
+      });
+
+      if (!salesOrder) {
+        // Check if it exists at all for a more descriptive error
+        const exists = await tx.salesOrder.findUnique({
+          where: { id: orderId },
+        });
+        if (!exists) {
+          throw new BadRequestException(`Sales Order ${orderId} not found`);
+        }
+        throw new BadRequestException(
+          `Only PENDING orders can be completed. Current status: ${exists.status}`,
+        );
+      }
+
       const updatedOrder = await tx.salesOrder.update({
         where: { id: orderId },
         data: { status: 'COMPLETED' },

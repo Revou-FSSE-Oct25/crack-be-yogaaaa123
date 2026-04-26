@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateReturnDto } from './dto/create-return.dto';
@@ -21,6 +22,8 @@ interface ReturnItemToCreate {
 
 @Injectable()
 export class ReturnsService {
+  private readonly logger = new Logger(ReturnsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async createReturn(data: CreateReturnDto, userId: string) {
@@ -130,13 +133,17 @@ export class ReturnsService {
       let returnedCogs = new Prisma.Decimal(0);
       for (const returnItem of returnItemsToCreate) {
         const orderItem = orderItemsMap.get(returnItem.orderItemId)!;
-        const unitPrice = orderItem.unitPrice; // Prisma.Decimal
-        const cogs = orderItem.cogs; // Prisma.Decimal
-        const itemProfitPerUnit = unitPrice.sub(cogs);
+        const unitPrice = orderItem.unitPrice; // Prisma.Decimal (per unit)
+
+        // FIX: orderItem.cogs is the TOTAL cogs for the entire original quantity,
+        // so we must divide by original quantity to get per-unit cost.
+        const unitCogs = orderItem.cogs.div(orderItem.quantity); // per-unit cost
+        const unitProfitMargin = unitPrice.sub(unitCogs); // per-unit profit
+
         returnedProfitMargin = returnedProfitMargin.add(
-          itemProfitPerUnit.mul(returnItem.quantity),
+          unitProfitMargin.mul(returnItem.quantity),
         );
-        returnedCogs = returnedCogs.add(cogs.mul(returnItem.quantity));
+        returnedCogs = returnedCogs.add(unitCogs.mul(returnItem.quantity));
       }
 
       await tx.salesOrder.update({
