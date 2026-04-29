@@ -22,10 +22,7 @@ describe('UsersService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        UsersService,
-        { provide: PrismaService, useFactory: mockPrismaService },
-      ],
+      providers: [UsersService, { provide: PrismaService, useFactory: mockPrismaService }],
     }).compile();
 
     service = module.get<UsersService>(UsersService);

@@ -77,9 +77,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('GET /inventory/low-stock should return 401 without token', () => {
-      return request(app.getHttpServer())
-        .get('/inventory/low-stock')
-        .expect(401);
+      return request(app.getHttpServer()).get('/inventory/low-stock').expect(401);
     });
   });
 });

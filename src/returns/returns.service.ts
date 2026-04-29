@@ -1,17 +1,7 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateReturnDto } from './dto/create-return.dto';
-import {
-  TransactionType,
-  ReturnStatus,
-  OrderItem,
-  Prisma,
-} from '@prisma/client';
+import { TransactionType, ReturnStatus, OrderItem, Prisma } from '@prisma/client';
 
 interface ReturnItemToCreate {
   orderItemId: string;
@@ -38,15 +28,11 @@ export class ReturnsService {
     }
 
     if (salesOrder.status !== 'COMPLETED') {
-      throw new BadRequestException(
-        'Cannot return items from a pending or cancelled order',
-      );
+      throw new BadRequestException('Cannot return items from a pending or cancelled order');
     }
 
     // 2. Validate return items
-    const orderItemsMap = new Map<string, OrderItem>(
-      salesOrder.items.map((i) => [i.id, i]),
-    );
+    const orderItemsMap = new Map<string, OrderItem>(salesOrder.items.map((i) => [i.id, i]));
     let totalRefund = new Prisma.Decimal(0);
     const returnItemsToCreate: ReturnItemToCreate[] = [];
 
@@ -59,8 +45,7 @@ export class ReturnsService {
       }
 
       // Check if quantity to return is valid
-      const remainingReturnable =
-        orderItem.quantity - orderItem.returnedQuantity;
+      const remainingReturnable = orderItem.quantity - orderItem.returnedQuantity;
       if (returnItem.quantity > remainingReturnable) {
         throw new BadRequestException(
           `Cannot return ${returnItem.quantity} items for OrderItem ${orderItem.id}. Only ${remainingReturnable} items are returnable.`,
@@ -140,9 +125,7 @@ export class ReturnsService {
         const unitCogs = orderItem.cogs.div(orderItem.quantity); // per-unit cost
         const unitProfitMargin = unitPrice.sub(unitCogs); // per-unit profit
 
-        returnedProfitMargin = returnedProfitMargin.add(
-          unitProfitMargin.mul(returnItem.quantity),
-        );
+        returnedProfitMargin = returnedProfitMargin.add(unitProfitMargin.mul(returnItem.quantity));
         returnedCogs = returnedCogs.add(unitCogs.mul(returnItem.quantity));
       }
 
@@ -158,14 +141,21 @@ export class ReturnsService {
     });
   }
 
-  findAll() {
-    return this.prisma.salesReturn.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        salesOrder: { select: { orderNumber: true } },
-        user: { select: { username: true } },
-      },
-    });
+  async findAll(skip?: number, take?: number) {
+    const [data, total] = await Promise.all([
+      this.prisma.salesReturn.findMany({
+        skip,
+        take: take ?? 50,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          salesOrder: { select: { orderNumber: true } },
+          user: { select: { username: true } },
+        },
+      }),
+      this.prisma.salesReturn.count(),
+    ]);
+
+    return { data, total };
   }
 
   async findOne(id: string) {

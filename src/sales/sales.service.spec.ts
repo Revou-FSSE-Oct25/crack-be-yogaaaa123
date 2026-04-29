@@ -35,10 +35,7 @@ describe('SalesService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SalesService,
-        { provide: PrismaService, useFactory: mockPrismaService },
-      ],
+      providers: [SalesService, { provide: PrismaService, useFactory: mockPrismaService }],
     }).compile();
 
     service = module.get<SalesService>(SalesService);
@@ -127,9 +124,7 @@ describe('SalesService', () => {
         return callback(tx);
       });
 
-      await expect(service.createSalesOrder(mockOrderData)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.createSalesOrder(mockOrderData)).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException for insufficient stock', async () => {
@@ -177,9 +172,7 @@ describe('SalesService', () => {
         return callback(tx);
       });
 
-      await expect(service.createSalesOrder(mockOrderData)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.createSalesOrder(mockOrderData)).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -208,9 +201,7 @@ describe('SalesService', () => {
         status: 'COMPLETED',
       });
 
-      await expect(service.cancelSalesOrder('so-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.cancelSalesOrder('so-1')).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException when cancelling an already CANCELLED order', async () => {
@@ -220,9 +211,7 @@ describe('SalesService', () => {
         status: 'CANCELLED',
       });
 
-      await expect(service.cancelSalesOrder('so-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.cancelSalesOrder('so-1')).rejects.toThrow(BadRequestException);
     });
   });
 

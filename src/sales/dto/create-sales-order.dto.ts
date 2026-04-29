@@ -24,8 +24,7 @@ export class SalesOrderItemDto {
   @ApiProperty({
     example: '999.99',
     type: String,
-    description:
-      'Unit selling price (use string to preserve decimal precision)',
+    description: 'Unit selling price (use string to preserve decimal precision)',
   })
   @IsNumberString()
   unitPrice: string;

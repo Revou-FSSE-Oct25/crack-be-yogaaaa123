@@ -22,10 +22,7 @@ describe('InventoryService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        InventoryService,
-        { provide: PrismaService, useFactory: mockPrismaService },
-      ],
+      providers: [InventoryService, { provide: PrismaService, useFactory: mockPrismaService }],
     }).compile();
 
     service = module.get<InventoryService>(InventoryService);
@@ -60,26 +57,19 @@ describe('InventoryService', () => {
         stockQuantity: 50,
       });
 
-      prisma.$transaction.mockImplementation(
-        async (callback: (tx: any) => Promise<unknown>) => {
-          const tx = {
-            stockTransaction: {
-              create: jest.fn().mockResolvedValue(mockTransaction),
-            },
-            product: {
-              update: jest.fn().mockResolvedValue(mockUpdatedProduct),
-            },
-          };
-          return await callback(tx);
-        },
-      );
+      prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
+        const tx = {
+          stockTransaction: {
+            create: jest.fn().mockResolvedValue(mockTransaction),
+          },
+          product: {
+            update: jest.fn().mockResolvedValue(mockUpdatedProduct),
+          },
+        };
+        return await callback(tx);
+      });
 
-      const result = await service.adjustStock(
-        productId,
-        userId,
-        10,
-        TransactionType.IN,
-      );
+      const result = await service.adjustStock(productId, userId, 10, TransactionType.IN);
 
       expect(result.transaction).toEqual(mockTransaction);
       expect(result.product.stockQuantity).toBe(60);
@@ -105,26 +95,19 @@ describe('InventoryService', () => {
         stockQuantity: 50,
       });
 
-      prisma.$transaction.mockImplementation(
-        async (callback: (tx: any) => Promise<unknown>) => {
-          const tx = {
-            stockTransaction: {
-              create: jest.fn().mockResolvedValue(mockTransaction),
-            },
-            product: {
-              update: jest.fn().mockResolvedValue(mockUpdatedProduct),
-            },
-          };
-          return await callback(tx);
-        },
-      );
+      prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
+        const tx = {
+          stockTransaction: {
+            create: jest.fn().mockResolvedValue(mockTransaction),
+          },
+          product: {
+            update: jest.fn().mockResolvedValue(mockUpdatedProduct),
+          },
+        };
+        return await callback(tx);
+      });
 
-      const result = await service.adjustStock(
-        productId,
-        userId,
-        5,
-        TransactionType.OUT,
-      );
+      const result = await service.adjustStock(productId, userId, 5, TransactionType.OUT);
 
       expect(result.transaction).toEqual(mockTransaction);
       expect(result.product.stockQuantity).toBe(45);
@@ -137,26 +120,24 @@ describe('InventoryService', () => {
         stockQuantity: 3,
       });
 
-      prisma.$transaction.mockImplementation(
-        async (callback: (tx: any) => Promise<unknown>) => {
-          const tx = {
-            stockTransaction: {
-              create: jest.fn().mockResolvedValue({}),
-            },
-            product: {
-              update: jest.fn().mockResolvedValue({
-                id: productId,
-                stockQuantity: -2,
-              }),
-            },
-          };
-          return await callback(tx);
-        },
-      );
+      prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
+        const tx = {
+          stockTransaction: {
+            create: jest.fn().mockResolvedValue({}),
+          },
+          product: {
+            update: jest.fn().mockResolvedValue({
+              id: productId,
+              stockQuantity: -2,
+            }),
+          },
+        };
+        return await callback(tx);
+      });
 
-      await expect(
-        service.adjustStock(productId, userId, 5, TransactionType.OUT),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.adjustStock(productId, userId, 5, TransactionType.OUT)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should handle ADJUSTMENT type with negative quantity', async () => {
@@ -170,26 +151,19 @@ describe('InventoryService', () => {
         stockQuantity: 50,
       });
 
-      prisma.$transaction.mockImplementation(
-        async (callback: (tx: any) => Promise<unknown>) => {
-          const tx = {
-            stockTransaction: {
-              create: jest.fn().mockResolvedValue({}),
-            },
-            product: {
-              update: jest.fn().mockResolvedValue(mockUpdatedProduct),
-            },
-          };
-          return await callback(tx);
-        },
-      );
+      prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
+        const tx = {
+          stockTransaction: {
+            create: jest.fn().mockResolvedValue({}),
+          },
+          product: {
+            update: jest.fn().mockResolvedValue(mockUpdatedProduct),
+          },
+        };
+        return await callback(tx);
+      });
 
-      const result = await service.adjustStock(
-        productId,
-        userId,
-        -3,
-        TransactionType.ADJUSTMENT,
-      );
+      const result = await service.adjustStock(productId, userId, -3, TransactionType.ADJUSTMENT);
 
       expect(result.product.stockQuantity).toBe(47);
     });
@@ -214,9 +188,9 @@ describe('InventoryService', () => {
         name: 'Test Product',
       });
 
-      await expect(
-        service.checkStockAvailability('product-1', 10),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.checkStockAvailability('product-1', 10)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

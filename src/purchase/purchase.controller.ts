@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  UseGuards,
-  Query,
-  Patch,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Query, Patch } from '@nestjs/common';
 import { PurchaseService } from './purchase.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -15,12 +6,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role, PurchaseOrderStatus } from '@prisma/client';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 
 @ApiTags('purchase')
@@ -33,8 +19,7 @@ export class PurchaseController {
   @Post()
   @Roles(Role.ADMIN)
   @ApiOperation({
-    summary:
-      'Create a received purchase order (adds stock immediately) - Admin only',
+    summary: 'Create a received purchase order (adds stock immediately) - Admin only',
   })
   createPurchaseOrder(
     @Body() createDto: CreatePurchaseOrderDto,
@@ -49,8 +34,7 @@ export class PurchaseController {
   @Post('pending')
   @Roles(Role.ADMIN)
   @ApiOperation({
-    summary:
-      'Create a pending purchase order (does not add stock) - Admin only',
+    summary: 'Create a pending purchase order (does not add stock) - Admin only',
   })
   createPendingPurchaseOrder(
     @Body() createDto: CreatePurchaseOrderDto,
@@ -65,10 +49,7 @@ export class PurchaseController {
   @Patch(':id/receive')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Receive a pending purchase order (Admin only)' })
-  receivePurchaseOrder(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  receivePurchaseOrder(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.purchaseService.receivePurchaseOrder(id, user.id);
   }
 

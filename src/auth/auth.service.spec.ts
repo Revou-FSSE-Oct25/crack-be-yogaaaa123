@@ -67,9 +67,7 @@ describe('AuthService', () => {
     it('should throw UnauthorizedException when user not found', async () => {
       usersService.findByUsername.mockResolvedValue(null);
 
-      await expect(service.login(loginDto)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
     });
 
     it('should throw UnauthorizedException when password is incorrect', async () => {
@@ -81,16 +79,12 @@ describe('AuthService', () => {
         passwordHash: hashedPassword,
       });
 
-      await expect(service.login(loginDto)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
     });
 
     it('should return same error for wrong username and wrong password (prevents user enumeration)', async () => {
       usersService.findByUsername.mockResolvedValue(null);
-      await expect(service.login(loginDto)).rejects.toThrow(
-        'Invalid credentials',
-      );
+      await expect(service.login(loginDto)).rejects.toThrow('Invalid credentials');
 
       const hashedPassword = await bcrypt.hash('differentpassword', 10);
       usersService.findByUsername.mockResolvedValue({
@@ -99,9 +93,7 @@ describe('AuthService', () => {
         role: 'ADMIN',
         passwordHash: hashedPassword,
       });
-      await expect(service.login(loginDto)).rejects.toThrow(
-        'Invalid credentials',
-      );
+      await expect(service.login(loginDto)).rejects.toThrow('Invalid credentials');
     });
   });
 });

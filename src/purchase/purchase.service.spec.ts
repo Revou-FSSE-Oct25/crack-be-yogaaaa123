@@ -34,10 +34,7 @@ describe('PurchaseService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PurchaseService,
-        { provide: PrismaService, useFactory: mockPrismaService },
-      ],
+      providers: [PurchaseService, { provide: PrismaService, useFactory: mockPrismaService }],
     }).compile();
 
     service = module.get<PurchaseService>(PurchaseService);
@@ -153,9 +150,7 @@ describe('PurchaseService', () => {
         status: PurchaseOrderStatus.RECEIVED,
       });
 
-      await expect(service.cancelPurchaseOrder('po-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.cancelPurchaseOrder('po-1')).rejects.toThrow(BadRequestException);
     });
   });
 });

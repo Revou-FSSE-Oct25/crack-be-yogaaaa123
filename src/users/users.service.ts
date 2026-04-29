@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  ConflictException,
-  Logger,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, ConflictException, Logger, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -19,17 +14,12 @@ export class UsersService {
   async create(createUserDto: CreateUserDto) {
     const existingUser = await this.prisma.user.findFirst({
       where: {
-        OR: [
-          { email: createUserDto.email },
-          { username: createUserDto.username },
-        ],
+        OR: [{ email: createUserDto.email }, { username: createUserDto.username }],
       },
     });
 
     if (existingUser) {
-      throw new ConflictException(
-        'User with this email or username already exists',
-      );
+      throw new ConflictException('User with this email or username already exists');
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -80,14 +70,25 @@ export class UsersService {
     });
   }
 
+  async findByUsernameOrEmail(usernameOrEmail: string) {
+    // SECURITY: filter soft-deleted users — they must not be able to login
+    return this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: usernameOrEmail, deletedAt: null },
+          { email: usernameOrEmail, deletedAt: null },
+        ],
+      },
+    });
+  }
+
   async update(id: string, updateUserDto: UpdateUserDto) {
     // Verify user exists and is not soft-deleted
     await this.findOne(id);
 
     // Explicit field mapping — never pass raw DTO to prevent accidental exposure of sensitive fields
     const updateData: { email?: string; role?: UpdateUserDto['role'] } = {};
-    if (updateUserDto.email !== undefined)
-      updateData.email = updateUserDto.email;
+    if (updateUserDto.email !== undefined) updateData.email = updateUserDto.email;
     if (updateUserDto.role !== undefined) updateData.role = updateUserDto.role;
 
     const user = await this.prisma.user.update({
@@ -119,19 +120,13 @@ export class UsersService {
     });
   }
 
-  async changePassword(
-    userId: string,
-    dto: ChangePasswordDto,
-  ): Promise<{ message: string }> {
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
     // Fetch full user record (including passwordHash) for verification
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId, deletedAt: null },
     });
 
-    const isCurrentPasswordValid = await bcrypt.compare(
-      dto.currentPassword,
-      user.passwordHash,
-    );
+    const isCurrentPasswordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!isCurrentPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }

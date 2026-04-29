@@ -1,11 +1,4 @@
-import {
-  IsString,
-  IsNumberString,
-  IsNumber,
-  IsOptional,
-  Min,
-  IsUUID,
-} from 'class-validator';
+import { IsString, IsNumberString, IsNumber, IsOptional, Min, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProductDto {
@@ -25,8 +18,7 @@ export class CreateProductDto {
   @ApiProperty({
     example: '999.99',
     type: String,
-    description:
-      'Product selling price (use string to preserve decimal precision)',
+    description: 'Product selling price (use string to preserve decimal precision)',
   })
   @IsNumberString()
   price: string;

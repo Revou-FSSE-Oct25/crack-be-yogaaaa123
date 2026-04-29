@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
@@ -15,7 +16,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('suppliers')
 @ApiBearerAuth()
@@ -32,9 +33,14 @@ export class SuppliersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all suppliers' })
-  findAll() {
-    return this.suppliersService.findAll();
+  @ApiOperation({ summary: 'Get all suppliers with pagination' })
+  @ApiQuery({ name: 'skip', required: false, type: Number })
+  @ApiQuery({ name: 'take', required: false, type: Number })
+  findAll(@Query('skip') skip?: string, @Query('take') take?: string) {
+    return this.suppliersService.findAll(
+      skip !== undefined ? parseInt(skip, 10) : undefined,
+      take !== undefined ? parseInt(take, 10) : undefined,
+    );
   }
 
   @Get(':id')
@@ -46,10 +52,7 @@ export class SuppliersController {
   @Patch(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Update a supplier (Admin only)' })
-  update(
-    @Param('id') id: string,
-    @Body() updateSupplierDto: UpdateSupplierDto,
-  ) {
+  update(@Param('id') id: string, @Body() updateSupplierDto: UpdateSupplierDto) {
     return this.suppliersService.update(id, updateSupplierDto);
   }
 

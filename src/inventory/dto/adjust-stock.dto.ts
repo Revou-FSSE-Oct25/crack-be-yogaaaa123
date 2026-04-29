@@ -1,11 +1,4 @@
-import {
-  IsNumber,
-  IsEnum,
-  IsString,
-  IsOptional,
-  IsUUID,
-  NotEquals,
-} from 'class-validator';
+import { IsNumber, IsEnum, IsString, IsOptional, IsUUID, NotEquals } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TransactionType } from '@prisma/client';
 

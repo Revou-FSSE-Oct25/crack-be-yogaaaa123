@@ -13,10 +13,20 @@ export class CategoriesService {
     });
   }
 
-  findAll() {
-    return this.prisma.category.findMany({
-      where: { deletedAt: null },
-    });
+  async findAll(skip?: number, take?: number) {
+    const where = { deletedAt: null };
+
+    const [data, total] = await Promise.all([
+      this.prisma.category.findMany({
+        where,
+        skip,
+        take: take ?? 50,
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.category.count({ where }),
+    ]);
+
+    return { data, total };
   }
 
   async findOne(id: string) {

@@ -12,6 +12,10 @@ import { SalesModule } from './sales/sales.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { ReturnsModule } from './returns/returns.module';
 import { HealthModule } from './health/health.module';
+import { ActivityLogModule } from './activity-log/activity-log.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { ReportsModule } from './reports/reports.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -39,6 +43,10 @@ import { HealthModule } from './health/health.module';
     PurchaseModule,
     ReturnsModule,
     HealthModule,
+    ActivityLogModule,
+    DashboardModule,
+    ReportsModule,
+    UploadModule,
   ],
   controllers: [],
   providers: [

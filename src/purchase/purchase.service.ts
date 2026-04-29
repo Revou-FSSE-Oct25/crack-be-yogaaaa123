@@ -65,9 +65,7 @@ export class PurchaseService {
       const newTotalStock = currentStock + incomingQty;
 
       const newAverageCost =
-        newTotalStock > 0
-          ? totalValueOld.add(totalValueNew).div(newTotalStock)
-          : incomingCost;
+        newTotalStock > 0 ? totalValueOld.add(totalValueNew).div(newTotalStock) : incomingCost;
 
       // Create IN stock transaction
       await tx.stockTransaction.create({
@@ -123,12 +121,7 @@ export class PurchaseService {
         unitPrice: new Prisma.Decimal(item.unitPrice),
       }));
 
-      await this.processReceivedItems(
-        dbItems,
-        purchaseOrder.orderNumber,
-        data.userId,
-        tx,
-      );
+      await this.processReceivedItems(dbItems, purchaseOrder.orderNumber, data.userId, tx);
 
       return purchaseOrder;
     });
@@ -180,12 +173,7 @@ export class PurchaseService {
       });
 
       // Proses setiap item menggunakan shared helper
-      await this.processReceivedItems(
-        purchaseOrder.items,
-        updatedOrder.orderNumber,
-        userId,
-        tx,
-      );
+      await this.processReceivedItems(purchaseOrder.items, updatedOrder.orderNumber, userId, tx);
 
       return updatedOrder;
     });
@@ -295,10 +283,7 @@ export class PurchaseService {
     );
     const totalSpent = totalSpentDecimal.toNumber();
 
-    const productsPurchased = new Map<
-      string,
-      { quantity: number; total: Prisma.Decimal }
-    >();
+    const productsPurchased = new Map<string, { quantity: number; total: Prisma.Decimal }>();
 
     purchaseOrders.forEach((order) => {
       order.items.forEach((item) => {
@@ -316,13 +301,11 @@ export class PurchaseService {
     return {
       totalOrders,
       totalSpent,
-      productsPurchased: Array.from(productsPurchased.entries()).map(
-        ([productId, data]) => ({
-          productId,
-          quantity: data.quantity,
-          total: data.total.toNumber(),
-        }),
-      ),
+      productsPurchased: Array.from(productsPurchased.entries()).map(([productId, data]) => ({
+        productId,
+        quantity: data.quantity,
+        total: data.total.toNumber(),
+      })),
     };
   }
 

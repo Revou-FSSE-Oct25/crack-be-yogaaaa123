@@ -38,10 +38,7 @@ describe('ReturnsService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ReturnsService,
-        { provide: PrismaService, useFactory: mockPrismaService },
-      ],
+      providers: [ReturnsService, { provide: PrismaService, useFactory: mockPrismaService }],
     }).compile();
 
     service = module.get<ReturnsService>(ReturnsService);
@@ -117,9 +114,7 @@ describe('ReturnsService', () => {
     it('should throw NotFoundException when sales order does not exist', async () => {
       prisma.salesOrder.findUnique.mockResolvedValue(null);
 
-      await expect(service.createReturn(returnDto, 'user-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.createReturn(returnDto, 'user-1')).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException for non-COMPLETED orders', async () => {
@@ -128,9 +123,7 @@ describe('ReturnsService', () => {
         status: 'PENDING',
       });
 
-      await expect(service.createReturn(returnDto, 'user-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.createReturn(returnDto, 'user-1')).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException when return quantity exceeds returnable quantity', async () => {
@@ -150,9 +143,9 @@ describe('ReturnsService', () => {
         items: [{ orderItemId: 'item-1', quantity: 2 }], // tries to return 2 but only 1 allowed
       };
 
-      await expect(
-        service.createReturn(invalidReturn, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.createReturn(invalidReturn, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

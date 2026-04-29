@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  UseGuards,
-  Query,
-  Patch,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Query, Patch } from '@nestjs/common';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
@@ -15,12 +6,7 @@ import { SalesService } from './sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { SalesOrderStatus } from '@prisma/client';
 import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 
@@ -35,10 +21,7 @@ export class SalesController {
   @ApiOperation({
     summary: 'Create a completed sales order (deducts stock immediately)',
   })
-  createSalesOrder(
-    @Body() createDto: CreateSalesOrderDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  createSalesOrder(@Body() createDto: CreateSalesOrderDto, @CurrentUser() user: AuthenticatedUser) {
     return this.salesService.createSalesOrder({
       ...createDto,
       userId: user.id,
@@ -61,10 +44,7 @@ export class SalesController {
 
   @Patch(':id/complete')
   @ApiOperation({ summary: 'Complete a pending sales order' })
-  completeSalesOrder(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  completeSalesOrder(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.salesService.completeSalesOrder(id, user.id);
   }
 

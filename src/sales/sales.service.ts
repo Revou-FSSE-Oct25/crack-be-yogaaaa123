@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TransactionType, SalesOrderStatus, Prisma } from '@prisma/client';
 import type { CreateSalesOrderDto as CreateSalesOrderDtoBase } from './dto/create-sales-order.dto';
@@ -164,12 +159,7 @@ export class SalesService {
       });
 
       // Decrement stok dan buat stock transactions
-      await this.processStockOut(
-        data.items,
-        salesOrder.orderNumber,
-        data.userId,
-        tx,
-      );
+      await this.processStockOut(data.items, salesOrder.orderNumber, data.userId, tx);
 
       return salesOrder;
     });
@@ -229,12 +219,7 @@ export class SalesService {
         quantity: item.quantity,
       }));
 
-      await this.processStockOut(
-        itemsForStockOut,
-        updatedOrder.orderNumber,
-        userId,
-        tx,
-      );
+      await this.processStockOut(itemsForStockOut, updatedOrder.orderNumber, userId, tx);
 
       return updatedOrder;
     });

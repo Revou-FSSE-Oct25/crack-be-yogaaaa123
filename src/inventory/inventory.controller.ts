@@ -19,10 +19,7 @@ export class InventoryController {
   @Post('adjust')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Manually adjust stock (Admin only)' })
-  adjustStock(
-    @Body() adjustStockDto: AdjustStockDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  adjustStock(@Body() adjustStockDto: AdjustStockDto, @CurrentUser() user: AuthenticatedUser) {
     return this.inventoryService.adjustStock(
       adjustStockDto.productId,
       user.id,

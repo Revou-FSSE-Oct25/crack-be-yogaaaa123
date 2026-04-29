@@ -23,6 +23,8 @@ model User {
   salesOrders    SalesOrder[]
   purchaseOrders PurchaseOrder[]
   returns        SalesReturn[]
+  activityLogs   ActivityLog[]
+  refreshTokens  RefreshToken[]
 
   @@map("users")
 }
@@ -31,6 +33,7 @@ model Product {
   sku           String    @unique
   name          String
   description   String?   @db.Text
+  imageUrl      String?
   price         Decimal   @db.Decimal(12, 2)
   averageCost   Decimal   @default(0) @db.Decimal(12, 2)
   stockQuantity Int       @default(0)
@@ -237,4 +240,42 @@ model SalesReturnItem {
   orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
 
   @@map("sales_return_items")
+}
+
+enum ActivityAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+}
+
+model ActivityLog {
+  id        String         @id @default(uuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  action    ActivityAction
+  entity    String         // e.g. "Product", "SalesOrder", "User"
+  entityId  String?        // ID dari entitas yang di-log
+  metadata  Json?          // Detail tambahan (JSON)
+  createdAt DateTime       @default(now())
+
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  @@index([token])
+  @@index([userId])
+  @@map("refresh_tokens")
 }

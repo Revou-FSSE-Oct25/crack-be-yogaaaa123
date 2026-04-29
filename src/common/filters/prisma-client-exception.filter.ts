@@ -17,8 +17,7 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
         const status = HttpStatus.CONFLICT;
         response.status(status).json({
           statusCode: status,
-          message:
-            'Data conflicts with existing records (Unique Constraint Violation)',
+          message: 'Data conflicts with existing records (Unique Constraint Violation)',
           error: 'Conflict',
         });
         break;

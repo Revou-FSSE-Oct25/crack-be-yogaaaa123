@@ -13,10 +13,20 @@ export class SuppliersService {
     });
   }
 
-  findAll() {
-    return this.prisma.supplier.findMany({
-      where: { deletedAt: null },
-    });
+  async findAll(skip?: number, take?: number) {
+    const where = { deletedAt: null };
+
+    const [data, total] = await Promise.all([
+      this.prisma.supplier.findMany({
+        where,
+        skip,
+        take: take ?? 50,
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.supplier.count({ where }),
+    ]);
+
+    return { data, total };
   }
 
   async findOne(id: string) {
