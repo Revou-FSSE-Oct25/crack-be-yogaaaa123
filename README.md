@@ -30,16 +30,16 @@ npm run start:dev
 
 ## 🧩 Tech Stack
 
-| Layer       | Tech                               |
-| ----------- | ---------------------------------- |
-| Framework   | NestJS v11                         |
-| Database    | PostgreSQL                         |
-| ORM         | Prisma v7                          |
-| Auth        | JWT (Passport) + bcrypt            |
+| Layer       | Tech                                |
+| ----------- | ----------------------------------- |
+| Framework   | NestJS v11                          |
+| Database    | PostgreSQL                          |
+| ORM         | Prisma v7                           |
+| Auth        | JWT (Passport) + bcrypt             |
 | Validation  | class-validator + class-transformer |
-| API Docs    | Swagger (OpenAPI)                  |
-| Rate Limit  | @nestjs/throttler                  |
-| File Upload | Multer                             |
+| API Docs    | Swagger (OpenAPI)                   |
+| Rate Limit  | @nestjs/throttler                   |
+| File Upload | Multer                              |
 
 ---
 
@@ -143,117 +143,131 @@ src/
 ## 🔌 API Endpoints
 
 ### 🔐 Authentication
-| Method | Path            | Auth     | Description      |
-| ------ | --------------- | -------- | ---------------- |
-| POST   | `/auth/login`   | Public   | Login, get JWT   |
+
+| Method | Path          | Auth   | Description    |
+| ------ | ------------- | ------ | -------------- |
+| POST   | `/auth/login` | Public | Login, get JWT |
 
 ### 👥 Users (Admin Only)
-| Method | Path                               | Auth    | Description                  |
-| ------ | ---------------------------------- | ------- | ---------------------------- |
-| POST   | `/users`                           | Admin   | Create user                  |
-| GET    | `/users`                           | Admin   | List all users (paginated)   |
-| GET    | `/users/:id`                       | Admin   | Get user by ID               |
-| PATCH  | `/users/:id`                       | Admin   | Update user                  |
-| DELETE | `/users/:id`                       | Admin   | Soft delete user             |
-| PATCH  | `/users/:id/change-password`       | JWT     | Change own password          |
+
+| Method | Path                         | Auth  | Description                |
+| ------ | ---------------------------- | ----- | -------------------------- |
+| POST   | `/users`                     | Admin | Create user                |
+| GET    | `/users`                     | Admin | List all users (paginated) |
+| GET    | `/users/:id`                 | Admin | Get user by ID             |
+| PATCH  | `/users/:id`                 | Admin | Update user                |
+| DELETE | `/users/:id`                 | Admin | Soft delete user           |
+| PATCH  | `/users/:id/change-password` | JWT   | Change own password        |
 
 ### 🏷️ Categories
-| Method | Path                | Auth       | Description                     |
-| ------ | ------------------- | ---------- | ------------------------------- |
-| POST   | `/categories`       | Admin      | Create category                 |
-| GET    | `/categories`       | JWT        | List all (paginated)            |
-| GET    | `/categories/:id`   | JWT        | Get by ID                       |
-| PATCH  | `/categories/:id`   | Admin      | Update category                 |
-| DELETE | `/categories/:id`   | Admin      | Soft delete category            |
+
+| Method | Path              | Auth  | Description          |
+| ------ | ----------------- | ----- | -------------------- |
+| POST   | `/categories`     | Admin | Create category      |
+| GET    | `/categories`     | JWT   | List all (paginated) |
+| GET    | `/categories/:id` | JWT   | Get by ID            |
+| PATCH  | `/categories/:id` | Admin | Update category      |
+| DELETE | `/categories/:id` | Admin | Soft delete category |
 
 ### 📦 Products
-| Method | Path              | Auth       | Description                                  |
-| ------ | ----------------- | ---------- | -------------------------------------------- |
-| POST   | `/products`       | Admin      | Create product                               |
-| GET    | `/products`       | JWT        | List all (`?search=&categoryId=&supplierId=&skip=&take=`) |
-| GET    | `/products/:id`   | JWT        | Get by ID                                    |
-| PATCH  | `/products/:id`   | Admin      | Update product                               |
-| DELETE | `/products/:id`   | Admin      | Soft delete product                          |
+
+| Method | Path            | Auth  | Description                                               |
+| ------ | --------------- | ----- | --------------------------------------------------------- |
+| POST   | `/products`     | Admin | Create product                                            |
+| GET    | `/products`     | JWT   | List all (`?search=&categoryId=&supplierId=&skip=&take=`) |
+| GET    | `/products/:id` | JWT   | Get by ID                                                 |
+| PATCH  | `/products/:id` | Admin | Update product                                            |
+| DELETE | `/products/:id` | Admin | Soft delete product                                       |
 
 ### 📊 Inventory / Stock
-| Method | Path                         | Auth       | Description                         |
-| ------ | ---------------------------- | ---------- | ----------------------------------- |
-| GET    | `/inventory`                 | JWT        | List stock transactions (paginated) |
-| GET    | `/inventory/stock`           | JWT        | Get current stock for all products  |
-| POST   | `/inventory/adjust`          | Admin/Staff| Adjust stock (IN/OUT/ADJUSTMENT)    |
+
+| Method | Path                | Auth        | Description                         |
+| ------ | ------------------- | ----------- | ----------------------------------- |
+| GET    | `/inventory`        | JWT         | List stock transactions (paginated) |
+| GET    | `/inventory/stock`  | JWT         | Get current stock for all products  |
+| POST   | `/inventory/adjust` | Admin/Staff | Adjust stock (IN/OUT/ADJUSTMENT)    |
 
 ### 🛒 Sales Orders
-| Method | Path                 | Auth       | Description                     |
-| ------ | -------------------- | ---------- | ------------------------------- |
-| POST   | `/sales`             | Admin/Staff| Create sales order              |
-| GET    | `/sales`             | JWT        | List sales orders (paginated)   |
-| GET    | `/sales/:id`         | JWT        | Get by ID                       |
-| PATCH  | `/sales/:id/status`  | Admin/Staff| Update order status             |
+
+| Method | Path                | Auth        | Description                   |
+| ------ | ------------------- | ----------- | ----------------------------- |
+| POST   | `/sales`            | Admin/Staff | Create sales order            |
+| GET    | `/sales`            | JWT         | List sales orders (paginated) |
+| GET    | `/sales/:id`        | JWT         | Get by ID                     |
+| PATCH  | `/sales/:id/status` | Admin/Staff | Update order status           |
 
 ### 🚚 Purchase Orders
-| Method | Path                   | Auth       | Description                         |
-| ------ | ---------------------- | ---------- | ----------------------------------- |
-| POST   | `/purchase`            | Admin/Staff| Create purchase order               |
-| GET    | `/purchase`            | JWT        | List purchase orders (paginated)    |
-| GET    | `/purchase/:id`        | JWT        | Get by ID                           |
-| PATCH  | `/purchase/:id/status` | Admin/Staff| Receive / cancel purchase order     |
+
+| Method | Path                   | Auth        | Description                      |
+| ------ | ---------------------- | ----------- | -------------------------------- |
+| POST   | `/purchase`            | Admin/Staff | Create purchase order            |
+| GET    | `/purchase`            | JWT         | List purchase orders (paginated) |
+| GET    | `/purchase/:id`        | JWT         | Get by ID                        |
+| PATCH  | `/purchase/:id/status` | Admin/Staff | Receive / cancel purchase order  |
 
 ### ↩️ Sales Returns
-| Method | Path            | Auth       | Description                         |
-| ------ | --------------- | ---------- | ----------------------------------- |
-| POST   | `/returns`      | Admin/Staff| Create return (auto stock reversal) |
-| GET    | `/returns`      | JWT        | List returns (paginated)            |
-| GET    | `/returns/:id`  | JWT        | Get by ID                           |
+
+| Method | Path           | Auth        | Description                         |
+| ------ | -------------- | ----------- | ----------------------------------- |
+| POST   | `/returns`     | Admin/Staff | Create return (auto stock reversal) |
+| GET    | `/returns`     | JWT         | List returns (paginated)            |
+| GET    | `/returns/:id` | JWT         | Get by ID                           |
 
 ### 📋 Activity Logs (Admin Only)
-| Method | Path                    | Auth  | Description                 |
-| ------ | ----------------------- | ----- | --------------------------- |
-| GET    | `/activity-logs`        | Admin | List all activity logs      |
-| GET    | `/activity-logs/:id`    | Admin | Get by ID                   |
+
+| Method | Path                 | Auth  | Description            |
+| ------ | -------------------- | ----- | ---------------------- |
+| GET    | `/activity-logs`     | Admin | List all activity logs |
+| GET    | `/activity-logs/:id` | Admin | Get by ID              |
 
 ### 📈 Dashboard (Admin & Staff)
-| Method | Path                          | Auth  | Description                         |
-| ------ | ----------------------------- | ----- | ----------------------------------- |
-| GET    | `/dashboard/summary`          | JWT   | Counts, revenue, low stock          |
-| GET    | `/dashboard/top-products`     | JWT   | Top selling products                |
-| GET    | `/dashboard/sales-trend`      | JWT   | Sales trend over last N days        |
-| GET    | `/dashboard/inventory-value`  | JWT   | Total stock count                   |
+
+| Method | Path                         | Auth | Description                  |
+| ------ | ---------------------------- | ---- | ---------------------------- |
+| GET    | `/dashboard/summary`         | JWT  | Counts, revenue, low stock   |
+| GET    | `/dashboard/top-products`    | JWT  | Top selling products         |
+| GET    | `/dashboard/sales-trend`     | JWT  | Sales trend over last N days |
+| GET    | `/dashboard/inventory-value` | JWT  | Total stock count            |
 
 ### 📑 Reports (Admin Only)
-| Method | Path                     | Auth  | Description                      |
-| ------ | ------------------------ | ----- | -------------------------------- |
-| GET    | `/reports/sales`         | Admin | Sales report (filter by date)    |
-| GET    | `/reports/inventory`     | Admin | Full inventory report            |
-| GET    | `/reports/profit-loss`   | Admin | Profit & loss report             |
+
+| Method | Path                   | Auth  | Description                   |
+| ------ | ---------------------- | ----- | ----------------------------- |
+| GET    | `/reports/sales`       | Admin | Sales report (filter by date) |
+| GET    | `/reports/inventory`   | Admin | Full inventory report         |
+| GET    | `/reports/profit-loss` | Admin | Profit & loss report          |
 
 ### 📤 Upload (Admin Only)
-| Method | Path             | Auth  | Description               |
-| ------ | ---------------- | ----- | ------------------------- |
-| POST   | `/upload/image`  | Admin | Upload product image      |
+
+| Method | Path            | Auth  | Description          |
+| ------ | --------------- | ----- | -------------------- |
+| POST   | `/upload/image` | Admin | Upload product image |
 
 ### ❤️ Health Check
-| Method | Path       | Auth   | Description          |
-| ------ | ---------- | ------ | -------------------- |
-| GET    | `/health`  | Public | Health check + Prisma|
+
+| Method | Path      | Auth   | Description           |
+| ------ | --------- | ------ | --------------------- |
+| GET    | `/health` | Public | Health check + Prisma |
 
 ### 📖 API Documentation
-| Method | Path    | Auth   | Description    |
-| ------ | ------- | ------ | -------------- |
-| GET    | `/api`  | Public | Swagger UI     |
+
+| Method | Path   | Auth   | Description |
+| ------ | ------ | ------ | ----------- |
+| GET    | `/api` | Public | Swagger UI  |
 
 ---
 
 ## 🔐 Environment Variables
 
-| Variable                 | Required | Default                    | Description                           |
-| ------------------------ | -------- | -------------------------- | ------------------------------------- |
-| `DATABASE_URL`           | ✅       | -                          | PostgreSQL connection string          |
-| `JWT_SECRET`             | ✅       | -                          | JWT signing secret (min 64 chars)     |
-| `PORT`                   | ❌       | `3000`                     | Server port                           |
-| `ALLOWED_ORIGINS`        | ❌       | `http://localhost:5173,...`| CORS allowed origins                  |
-| `DEFAULT_ADMIN_PASSWORD` | ❌       | -                          | Seed admin password                   |
-| `DEFAULT_STAFF_PASSWORD` | ❌       | -                          | Seed staff password                   |
-| `UPLOAD_DIR`             | ❌       | `./uploads`                | Upload directory for product images   |
+| Variable                 | Required | Default                     | Description                         |
+| ------------------------ | -------- | --------------------------- | ----------------------------------- |
+| `DATABASE_URL`           | ✅       | -                           | PostgreSQL connection string        |
+| `JWT_SECRET`             | ✅       | -                           | JWT signing secret (min 64 chars)   |
+| `PORT`                   | ❌       | `3000`                      | Server port                         |
+| `ALLOWED_ORIGINS`        | ❌       | `http://localhost:5173,...` | CORS allowed origins                |
+| `DEFAULT_ADMIN_PASSWORD` | ❌       | -                           | Seed admin password                 |
+| `DEFAULT_STAFF_PASSWORD` | ❌       | -                           | Seed staff password                 |
+| `UPLOAD_DIR`             | ❌       | `./uploads`                 | Upload directory for product images |
 
 ---
 
@@ -311,11 +325,11 @@ docker run -p 3000:3000 \
 
 ## ⚡ Scripts
 
-| Script              | Description                          |
-| ------------------- | ------------------------------------ |
-| `npm run start:dev` | Start in watch mode                  |
-| `npm run build`     | Build for production                 |
-| `npm run start:prod`| Start production server              |
-| `npm run lint`      | Lint all files                       |
-| `npm run test`      | Run unit tests                       |
-| `npm run test:e2e`  | Run e2e tests                        |
+| Script               | Description             |
+| -------------------- | ----------------------- |
+| `npm run start:dev`  | Start in watch mode     |
+| `npm run build`      | Build for production    |
+| `npm run start:prod` | Start production server |
+| `npm run lint`       | Lint all files          |
+| `npm run test`       | Run unit tests          |
+| `npm run test:e2e`   | Run e2e tests           |

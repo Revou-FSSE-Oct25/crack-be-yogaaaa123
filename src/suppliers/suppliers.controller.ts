@@ -15,8 +15,17 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role } from '@prisma/client';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { TenantRole } from '@prisma/client';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiBody,
+  ApiResponse,
+} from '@nestjs/swagger';
+import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 
 @ApiTags('suppliers')
 @ApiBearerAuth()
@@ -26,40 +35,55 @@ export class SuppliersController {
   constructor(private readonly suppliersService: SuppliersService) {}
 
   @Post()
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Create a supplier (Admin only)' })
-  create(@Body() createSupplierDto: CreateSupplierDto) {
-    return this.suppliersService.create(createSupplierDto);
+  @Roles(TenantRole.ADMIN)
+  @ApiOperation({ summary: 'Tambah supplier baru (Admin only)' })
+  @ApiBody({ type: CreateSupplierDto })
+  @ApiResponse({ status: 201, description: 'Supplier berhasil dibuat' })
+  create(@Body() createSupplierDto: CreateSupplierDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.suppliersService.create(createSupplierDto, user.tenantId);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all suppliers with pagination' })
+  @ApiOperation({ summary: 'Daftar semua supplier (dengan pagination)' })
   @ApiQuery({ name: 'skip', required: false, type: Number })
   @ApiQuery({ name: 'take', required: false, type: Number })
-  findAll(@Query('skip') skip?: string, @Query('take') take?: string) {
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
     return this.suppliersService.findAll(
+      user.tenantId,
       skip !== undefined ? parseInt(skip, 10) : undefined,
       take !== undefined ? parseInt(take, 10) : undefined,
     );
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a supplier by id' })
-  findOne(@Param('id') id: string) {
-    return this.suppliersService.findOne(id);
+  @ApiOperation({ summary: 'Detail supplier by ID' })
+  @ApiResponse({ status: 200, description: 'Detail supplier' })
+  @ApiResponse({ status: 404, description: 'Supplier tidak ditemukan' })
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.suppliersService.findOne(id, user.tenantId);
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Update a supplier (Admin only)' })
-  update(@Param('id') id: string, @Body() updateSupplierDto: UpdateSupplierDto) {
-    return this.suppliersService.update(id, updateSupplierDto);
+  @Roles(TenantRole.ADMIN)
+  @ApiOperation({ summary: 'Update supplier (Admin only)' })
+  @ApiBody({ type: UpdateSupplierDto })
+  update(
+    @Param('id') id: string,
+    @Body() updateSupplierDto: UpdateSupplierDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.suppliersService.update(id, updateSupplierDto, user.tenantId);
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Delete a supplier (Admin only)' })
-  remove(@Param('id') id: string) {
-    return this.suppliersService.remove(id);
+  @Roles(TenantRole.ADMIN)
+  @ApiOperation({ summary: 'Hapus supplier (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Supplier berhasil dihapus' })
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.suppliersService.remove(id, user.tenantId);
   }
 }

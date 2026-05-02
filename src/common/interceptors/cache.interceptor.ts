@@ -22,7 +22,10 @@ export class CacheInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const cacheKey = `${request.url}`;
+    // Tenant-aware cache key: prevents data leakage between tenants
+    // If user is authenticated, include tenantId; otherwise fallback to IP
+    const tenantId = request.user?.tenantId || request.ip || 'anonymous';
+    const cacheKey = `${tenantId}:${request.url}`;
     const cached = this.cache.get(cacheKey);
 
     if (cached && cached.expiry > Date.now()) {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
@@ -7,45 +7,56 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
-  create(createSupplierDto: CreateSupplierDto) {
+  create(createSupplierDto: CreateSupplierDto, tenantId: string) {
     return this.prisma.supplier.create({
-      data: createSupplierDto,
+      data: {
+        ...createSupplierDto,
+        tenantId,
+      },
     });
   }
 
-  async findAll(skip?: number, take?: number) {
-    const where = { deletedAt: null };
+  async findAll(tenantId: string, skip?: number, take?: number) {
+    const prisma = this.prisma.getClient(tenantId);
+    const where = {};
 
     const [data, total] = await Promise.all([
-      this.prisma.supplier.findMany({
+      prisma.supplier.findMany({
         where,
         skip,
         take: take ?? 50,
         orderBy: { name: 'asc' },
       }),
-      this.prisma.supplier.count({ where }),
+      prisma.supplier.count({ where }),
     ]);
 
     return { data, total };
   }
 
-  async findOne(id: string) {
-    return this.prisma.supplier.findUniqueOrThrow({
-      where: { id, deletedAt: null },
+  async findOne(id: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const supplier = await prisma.supplier.findFirst({
+      where: { id },
     });
+    if (!supplier) {
+      throw new NotFoundException(`Supplier ${id} not found`);
+    }
+    return supplier;
   }
 
-  async update(id: string, updateSupplierDto: UpdateSupplierDto) {
-    await this.findOne(id);
-    return this.prisma.supplier.update({
+  async update(id: string, updateSupplierDto: UpdateSupplierDto, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    await this.findOne(id, tenantId);
+    return prisma.supplier.update({
       where: { id },
       data: updateSupplierDto,
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.supplier.update({
+  async remove(id: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    await this.findOne(id, tenantId);
+    return prisma.supplier.update({
       where: { id },
       data: { deletedAt: new Date() },
     });

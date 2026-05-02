@@ -5,22 +5,22 @@ import { TransactionType, PurchaseOrderStatus, Prisma } from '@prisma/client';
 interface PurchaseOrderItem {
   productId: string;
   quantity: number;
-  unitPrice: string; // string to preserve Decimal precision
+  unitPrice: string;
 }
 
 interface CreatePurchaseOrderDto {
   orderNumber: string;
   supplierId: string;
   userId: string;
+  tenantId: string;
   items: PurchaseOrderItem[];
   notes?: string;
 }
 
-// Shape dari item yang sudah ada di DB (saat receivePurchaseOrder)
 interface DbPurchaseOrderItem {
   productId: string;
   quantity: number;
-  unitPrice: Prisma.Decimal; // sudah Decimal dari DB
+  unitPrice: Prisma.Decimal;
 }
 
 @Injectable()
@@ -34,14 +34,11 @@ export class PurchaseService {
     }, new Prisma.Decimal(0));
   }
 
-  /**
-   * Private helper: proses stock IN dan update moving average cost untuk setiap item.
-   * Di-extract untuk menghindari duplikasi antara createPurchaseOrder & receivePurchaseOrder.
-   */
   private async processReceivedItems(
     items: DbPurchaseOrderItem[],
     orderNumber: string,
     userId: string,
+    tenantId: string,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const productIds = items.map((i) => i.productId);
@@ -51,15 +48,13 @@ export class PurchaseService {
     const productMap = new Map(products.map((p) => [p.id, p]));
 
     for (const item of items) {
-      // Prisma guarantee: foreign key ensures product exists since purchaseOrder insert succeeded
       const product = productMap.get(item.productId)!;
 
       const currentStock = product.stockQuantity;
-      const currentAvgCost = product.averageCost; // Already Prisma.Decimal
+      const currentAvgCost = product.averageCost;
       const incomingQty = item.quantity;
-      const incomingCost = item.unitPrice; // Already Prisma.Decimal
+      const incomingCost = item.unitPrice;
 
-      // Moving average cost menggunakan Decimal arithmetic (no floating-point error)
       const totalValueOld = currentAvgCost.mul(currentStock);
       const totalValueNew = incomingCost.mul(incomingQty);
       const newTotalStock = currentStock + incomingQty;
@@ -67,7 +62,6 @@ export class PurchaseService {
       const newAverageCost =
         newTotalStock > 0 ? totalValueOld.add(totalValueNew).div(newTotalStock) : incomingCost;
 
-      // Create IN stock transaction
       await tx.stockTransaction.create({
         data: {
           type: TransactionType.IN,
@@ -76,10 +70,10 @@ export class PurchaseService {
           notes: 'Purchase Order Received',
           productId: item.productId,
           userId,
+          tenantId,
         },
       });
 
-      // Update product stock quantity dan average cost
       await tx.product.update({
         where: { id: item.productId },
         data: {
@@ -94,7 +88,6 @@ export class PurchaseService {
     const totalPrice = this.calculateTotalPrice(data.items);
 
     return this.prisma.$transaction(async (tx) => {
-      // Buat purchase order
       const purchaseOrder = await tx.purchaseOrder.create({
         data: {
           orderNumber: data.orderNumber,
@@ -103,6 +96,7 @@ export class PurchaseService {
           notes: data.notes,
           supplierId: data.supplierId,
           userId: data.userId,
+          tenantId: data.tenantId,
           items: {
             create: data.items.map((item) => ({
               productId: item.productId,
@@ -114,14 +108,19 @@ export class PurchaseService {
         },
       });
 
-      // Konversi items ke format DbPurchaseOrderItem untuk helper
       const dbItems: DbPurchaseOrderItem[] = data.items.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
         unitPrice: new Prisma.Decimal(item.unitPrice),
       }));
 
-      await this.processReceivedItems(dbItems, purchaseOrder.orderNumber, data.userId, tx);
+      await this.processReceivedItems(
+        dbItems,
+        purchaseOrder.orderNumber,
+        data.userId,
+        data.tenantId,
+        tx,
+      );
 
       return purchaseOrder;
     });
@@ -130,31 +129,38 @@ export class PurchaseService {
   async createPendingPurchaseOrder(data: CreatePurchaseOrderDto) {
     const totalPrice = this.calculateTotalPrice(data.items);
 
-    // Buat purchase order tanpa stock transaction (status PENDING)
-    return this.prisma.purchaseOrder.create({
-      data: {
-        orderNumber: data.orderNumber,
-        totalPrice,
-        status: PurchaseOrderStatus.PENDING,
-        notes: data.notes,
-        supplierId: data.supplierId,
-        userId: data.userId,
-        items: {
-          create: data.items.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: new Prisma.Decimal(item.unitPrice),
-          })),
+    return this.prisma.$transaction(async (tx) => {
+      return tx.purchaseOrder.create({
+        data: {
+          orderNumber: data.orderNumber,
+          totalPrice,
+          status: PurchaseOrderStatus.PENDING,
+          notes: data.notes,
+          supplierId: data.supplierId,
+          userId: data.userId,
+          tenantId: data.tenantId,
+          items: {
+            create: data.items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPrice: new Prisma.Decimal(item.unitPrice),
+            })),
+          },
         },
-      },
+      });
     });
   }
 
-  async receivePurchaseOrder(orderId: string, userId: string) {
-    const purchaseOrder = await this.prisma.purchaseOrder.findUniqueOrThrow({
+  async receivePurchaseOrder(orderId: string, userId: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const purchaseOrder = await prisma.purchaseOrder.findFirst({
       where: { id: orderId },
       include: { items: true },
     });
+
+    if (!purchaseOrder) {
+      throw new BadRequestException(`Purchase Order ${orderId} not found`);
+    }
 
     if (purchaseOrder.status === PurchaseOrderStatus.RECEIVED) {
       throw new BadRequestException(
@@ -163,7 +169,6 @@ export class PurchaseService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Update order status
       const updatedOrder = await tx.purchaseOrder.update({
         where: { id: orderId },
         data: {
@@ -172,28 +177,37 @@ export class PurchaseService {
         },
       });
 
-      // Proses setiap item menggunakan shared helper
-      await this.processReceivedItems(purchaseOrder.items, updatedOrder.orderNumber, userId, tx);
+      await this.processReceivedItems(
+        purchaseOrder.items,
+        updatedOrder.orderNumber,
+        userId,
+        tenantId,
+        tx,
+      );
 
       return updatedOrder;
     });
   }
 
-  async getPurchaseOrders(options?: {
-    skip?: number;
-    take?: number;
-    supplierId?: string;
-    status?: PurchaseOrderStatus;
-  }) {
+  async getPurchaseOrders(
+    tenantId: string,
+    options?: {
+      skip?: number;
+      take?: number;
+      supplierId?: string;
+      status?: PurchaseOrderStatus;
+    },
+  ) {
+    const prisma = this.prisma.getClient(tenantId);
     const where = {
       ...(options?.supplierId && { supplierId: options.supplierId }),
       ...(options?.status && { status: options.status }),
     };
 
-    return this.prisma.purchaseOrder.findMany({
+    return prisma.purchaseOrder.findMany({
       where,
       skip: options?.skip,
-      take: options?.take ?? 50, // Default limit 50 untuk mencegah query tanpa batas
+      take: options?.take ?? 50,
       orderBy: { createdAt: 'desc' },
       include: {
         supplier: {
@@ -206,7 +220,6 @@ export class PurchaseService {
         user: {
           select: {
             username: true,
-            email: true,
           },
         },
         items: {
@@ -223,8 +236,9 @@ export class PurchaseService {
     });
   }
 
-  async getPurchaseOrderById(id: string) {
-    return this.prisma.purchaseOrder.findUniqueOrThrow({
+  async getPurchaseOrderById(tenantId: string, id: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const order = await prisma.purchaseOrder.findFirst({
       where: { id },
       include: {
         supplier: {
@@ -239,7 +253,6 @@ export class PurchaseService {
         user: {
           select: {
             username: true,
-            email: true,
           },
         },
         items: {
@@ -257,13 +270,17 @@ export class PurchaseService {
         },
       },
     });
+    if (!order) {
+      throw new BadRequestException(`Purchase Order ${id} not found`);
+    }
+    return order;
   }
 
-  async getSupplierPurchaseSummary(supplierId: string) {
-    const purchaseOrders = await this.prisma.purchaseOrder.findMany({
+  async getSupplierPurchaseSummary(tenantId: string, supplierId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const purchaseOrders = await prisma.purchaseOrder.findMany({
       where: {
         supplierId,
-        deletedAt: null, // Filter soft-deleted orders
       },
       include: {
         items: {
@@ -276,7 +293,6 @@ export class PurchaseService {
 
     const totalOrders = purchaseOrders.length;
 
-    // Gunakan Decimal untuk menjumlahkan totalSpent tanpa floating-point error
     const totalSpentDecimal = purchaseOrders.reduce(
       (sum, order) => sum.add(order.totalPrice),
       new Prisma.Decimal(0),
@@ -309,24 +325,38 @@ export class PurchaseService {
     };
   }
 
-  /**
-   * Cancel a PENDING purchase order.
-   * Only PENDING orders can be cancelled — no stock impact.
-   */
-  async cancelPurchaseOrder(orderId: string) {
-    const purchaseOrder = await this.prisma.purchaseOrder.findUniqueOrThrow({
-      where: { id: orderId },
-    });
+  async cancelPurchaseOrder(orderId: string, _tenantId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const updateResult = await tx.purchaseOrder.updateMany({
+        where: {
+          id: orderId,
+          status: 'PENDING',
+        },
+        data: { status: 'CANCELLED' },
+      });
 
-    if (purchaseOrder.status !== 'PENDING') {
-      throw new BadRequestException(
-        `Only PENDING orders can be cancelled. Current status: ${purchaseOrder.status}`,
-      );
-    }
+      if (updateResult.count === 0) {
+        const exists = await tx.purchaseOrder.findFirst({
+          where: { id: orderId },
+          select: { id: true, status: true },
+        });
 
-    return this.prisma.purchaseOrder.update({
-      where: { id: orderId },
-      data: { status: 'CANCELLED' },
+        if (!exists) {
+          throw new BadRequestException(`Purchase Order ${orderId} not found`);
+        }
+
+        throw new BadRequestException(
+          `Only PENDING orders can be cancelled. Current status: ${exists.status}`,
+        );
+      }
+
+      const updated = await tx.purchaseOrder.findFirst({
+        where: { id: orderId },
+      });
+      if (!updated) {
+        throw new BadRequestException(`Purchase Order ${orderId} not found after cancellation`);
+      }
+      return updated;
     });
   }
 }

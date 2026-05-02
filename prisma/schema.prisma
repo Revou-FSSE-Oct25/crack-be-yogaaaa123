@@ -6,19 +6,68 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum Role {
+// ═══════════════════════════════════════════════════════════════════════
+// PLATFORM ADMIN — Super Admin (developer/pemilik platform)
+// ═══════════════════════════════════════════════════════════════════════
+
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  @@map("platform_admins")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TENANT (Toko) — Multi-tenant core
+// ═══════════════════════════════════════════════════════════════════════
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  aiApiKey  String?  // API key untuk AI service (billing per toko)
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+
+  members      TenantMember[]
+  products     Product[]
+  categories   Category[]
+  suppliers    Supplier[]
+  users        TenantUser[]
+  salesOrders  SalesOrder[]
+  purchaseOrders PurchaseOrder[]
+  stockTransactions StockTransaction[]
+  returns           SalesReturn[]
+  activityLogs      ActivityLog[]
+
+  @@map("tenants")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TENANT USER — User khusus untuk satu toko (terisolasi per tenant)
+// ═══════════════════════════════════════════════════════════════════════
+
+enum TenantRole {
   ADMIN
   STAFF
 }
 
-model User {
-  id             String             @id @default(uuid())
-  username       String             @unique
-  email          String             @unique
-  passwordHash   String
-  role           Role               @default(STAFF)
-  createdAt      DateTime           @default(now())
-  deletedAt      DateTime?
+model TenantUser {
+  id           String   @id @default(uuid())
+  username     String
+  passwordHash String
+  role         TenantRole @default(STAFF)
+  displayName  String?
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
   transactions   StockTransaction[]
   salesOrders    SalesOrder[]
   purchaseOrders PurchaseOrder[]
@@ -26,11 +75,54 @@ model User {
   activityLogs   ActivityLog[]
   refreshTokens  RefreshToken[]
 
-  @@map("users")
+  @@unique([tenantId, username])
+  @@map("tenant_users")
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// PLATFORM USER — User global untuk login ke platform (Google/Email)
+// ═══════════════════════════════════════════════════════════════════════
+
+model PlatformUser {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  name           String?
+  googleId       String?  @unique
+  passwordHash   String?
+  createdAt      DateTime @default(now())
+  deletedAt      DateTime?
+
+  tenantMemberships TenantMember[]
+
+  @@map("platform_users")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TENANT MEMBER — Relasi PlatformUser ke Tenant (siapa punya toko apa)
+// ═══════════════════════════════════════════════════════════════════════
+
+model TenantMember {
+  id         String   @id @default(uuid())
+  role       String   @default("OWNER") // OWNER, MEMBER
+  createdAt  DateTime @default(now())
+
+  platformUserId String
+  platformUser   PlatformUser @relation(fields: [platformUserId], references: [id])
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([platformUserId, tenantId])
+  @@map("tenant_members")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PRODUCT — Sekarang terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
+
 model Product {
   id            String    @id @default(uuid())
-  sku           String    @unique
+  sku           String
   name          String
   description   String?   @db.Text
   imageUrl      String?
@@ -42,6 +134,9 @@ model Product {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id])
 
@@ -52,20 +147,34 @@ model Product {
   orderItems         OrderItem[]
   purchaseOrderItems PurchaseOrderItem[]
 
+  @@unique([tenantId, sku])
   @@index([sku])
   @@index([name])
   @@map("products")
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// CATEGORY — Terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
 
 model Category {
   id          String    @id @default(uuid())
   name        String
   description String?   @db.Text
   deletedAt   DateTime?
-  products    Product[]
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  products Product[]
+
+  @@unique([tenantId, name])
   @@map("categories")
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// SUPPLIER — Terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
 
 model Supplier {
   id             String          @id @default(uuid())
@@ -75,13 +184,21 @@ model Supplier {
   email          String?
   address        String?         @db.Text
   deletedAt      DateTime?
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
   products       Product[]
   purchaseOrders PurchaseOrder[]
 
+  @@unique([tenantId, name])
   @@map("suppliers")
 }
 
-// 3. Ledger Transaksi Stok
+// ═══════════════════════════════════════════════════════════════════════
+// STOCK TRANSACTION — Terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
+
 enum TransactionType {
   IN
   OUT
@@ -93,22 +210,28 @@ model StockTransaction {
   id          String          @id @default(uuid())
   type        TransactionType
   quantity    Int
-  referenceId String? // Bisa diisi Order Number
+  referenceId String?
   notes       String?         @db.Text
   createdAt   DateTime        @default(now())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   productId String
   product   Product @relation(fields: [productId], references: [id])
 
   userId String
-  user   User @relation(fields: [userId], references: [id])
+  user   TenantUser @relation(fields: [userId], references: [id])
 
   @@index([createdAt])
   @@index([productId])
   @@map("stock_transactions")
 }
 
-// 4. Pembelian dari Supplier
+// ═══════════════════════════════════════════════════════════════════════
+// PURCHASE ORDER — Terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
+
 enum PurchaseOrderStatus {
   PENDING
   RECEIVED
@@ -117,7 +240,7 @@ enum PurchaseOrderStatus {
 
 model PurchaseOrder {
   id          String              @id @default(uuid())
-  orderNumber String              @unique
+  orderNumber String
   totalPrice  Decimal             @db.Decimal(12, 2)
   status      PurchaseOrderStatus @default(PENDING)
   notes       String?             @db.Text
@@ -125,12 +248,16 @@ model PurchaseOrder {
   receivedAt  DateTime?
   deletedAt   DateTime?
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
   supplierId String
   supplier   Supplier            @relation(fields: [supplierId], references: [id])
   userId     String
-  user       User                @relation(fields: [userId], references: [id])
+  user       TenantUser          @relation(fields: [userId], references: [id])
   items      PurchaseOrderItem[]
 
+  @@unique([tenantId, orderNumber])
   @@index([orderNumber])
   @@index([createdAt])
   @@index([supplierId])
@@ -152,7 +279,10 @@ model PurchaseOrderItem {
   @@map("purchase_order_items")
 }
 
-// 5. Penjualan ke Customer
+// ═══════════════════════════════════════════════════════════════════════
+// SALES ORDER — Terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
+
 enum SalesOrderStatus {
   PENDING
   COMPLETED
@@ -161,8 +291,8 @@ enum SalesOrderStatus {
 
 model SalesOrder {
   id          String           @id @default(uuid())
-  orderNumber String           @unique
-  customerId  String? // ID customer (bisa nomor/timestamp, tanpa nama)
+  orderNumber String
+  customerId  String?
   totalPrice  Decimal          @db.Decimal(12, 2)
   totalCogs   Decimal          @default(0) @db.Decimal(12, 2)
   totalProfit Decimal          @default(0) @db.Decimal(12, 2)
@@ -170,11 +300,15 @@ model SalesOrder {
   createdAt   DateTime         @default(now())
   deletedAt   DateTime?
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
   userId  String
-  user    User          @relation(fields: [userId], references: [id])
+  user    TenantUser  @relation(fields: [userId], references: [id])
   items   OrderItem[]
   returns SalesReturn[]
 
+  @@unique([tenantId, orderNumber])
   @@index([orderNumber])
   @@index([createdAt])
   @@index([userId])
@@ -200,7 +334,10 @@ model OrderItem {
   @@map("order_items")
 }
 
-// 6. Retur Penjualan
+// ═══════════════════════════════════════════════════════════════════════
+// SALES RETURN — Terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
+
 enum ReturnStatus {
   PENDING
   COMPLETED
@@ -209,20 +346,24 @@ enum ReturnStatus {
 
 model SalesReturn {
   id           String       @id @default(uuid())
-  returnNumber String       @unique
+  returnNumber String
   reason       String?      @db.Text
   totalRefund  Decimal      @default(0) @db.Decimal(12, 2)
   status       ReturnStatus @default(PENDING)
   createdAt    DateTime     @default(now())
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
   salesOrderId String
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
 
   userId String
-  user   User @relation(fields: [userId], references: [id])
+  user   TenantUser @relation(fields: [userId], references: [id])
 
   items SalesReturnItem[]
 
+  @@unique([tenantId, returnNumber])
   @@index([returnNumber])
   @@index([salesOrderId])
   @@map("sales_returns")
@@ -242,6 +383,10 @@ model SalesReturnItem {
   @@map("sales_return_items")
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// ACTIVITY LOG — Terikat ke tenant
+// ═══════════════════════════════════════════════════════════════════════
+
 enum ActivityAction {
   CREATE
   UPDATE
@@ -253,12 +398,15 @@ enum ActivityAction {
 model ActivityLog {
   id        String         @id @default(uuid())
   userId    String
-  user      User           @relation(fields: [userId], references: [id])
+  user      TenantUser     @relation(fields: [userId], references: [id])
   action    ActivityAction
-  entity    String         // e.g. "Product", "SalesOrder", "User"
-  entityId  String?        // ID dari entitas yang di-log
-  metadata  Json?          // Detail tambahan (JSON)
+  entity    String
+  entityId  String?
+  metadata  Json?
   createdAt DateTime       @default(now())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([userId])
   @@index([entity])
@@ -266,11 +414,15 @@ model ActivityLog {
   @@map("activity_logs")
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// REFRESH TOKEN — Terikat ke tenant user
+// ═══════════════════════════════════════════════════════════════════════
+
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      TenantUser @relation(fields: [userId], references: [id])
   expiresAt DateTime
   createdAt DateTime @default(now())
   revokedAt DateTime?

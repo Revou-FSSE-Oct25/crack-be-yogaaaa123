@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { ActivityAction } from '@prisma/client';
 
@@ -7,6 +7,7 @@ export class ActivityLogService {
   constructor(private prisma: PrismaService) {}
 
   async log(params: {
+    tenantId: string;
     userId: string;
     action: ActivityAction;
     entity: string;
@@ -19,6 +20,7 @@ export class ActivityLogService {
         action: params.action,
         entity: params.entity,
         entityId: params.entityId,
+        tenantId: params.tenantId,
         metadata: (params.metadata ?? {}) as any,
       },
     });
@@ -43,7 +45,7 @@ export class ActivityLogService {
   }
 
   async findOne(id: string) {
-    return this.prisma.activityLog.findUniqueOrThrow({
+    const result = await this.prisma.activityLog.findFirst({
       where: { id },
       include: {
         user: {
@@ -51,5 +53,9 @@ export class ActivityLogService {
         },
       },
     });
+    if (!result) {
+      throw new NotFoundException(`Activity Log ${id} not found`);
+    }
+    return result;
   }
 }

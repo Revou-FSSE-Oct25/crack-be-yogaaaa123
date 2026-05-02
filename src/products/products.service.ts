@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -9,20 +9,27 @@ import type { Product } from '@prisma/client';
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
-  create(createProductDto: CreateProductDto): Promise<Product> {
+  create(createProductDto: CreateProductDto, tenantId: string): Promise<Product> {
     return this.prisma.product.create({
-      data: createProductDto,
+      data: {
+        ...createProductDto,
+        tenantId,
+      },
     });
   }
 
-  async findAll(options?: {
-    skip?: number;
-    take?: number;
-    search?: string;
-    categoryId?: string;
-    supplierId?: string;
-  }) {
-    const where: Prisma.ProductWhereInput = { deletedAt: null };
+  async findAll(
+    tenantId: string,
+    options?: {
+      skip?: number;
+      take?: number;
+      search?: string;
+      categoryId?: string;
+      supplierId?: string;
+    },
+  ) {
+    const prisma = this.prisma.getClient(tenantId);
+    const where: Prisma.ProductWhereInput = {};
 
     // Search by name or SKU
     if (options?.search) {
@@ -43,7 +50,7 @@ export class ProductsService {
     }
 
     const [data, total] = await Promise.all([
-      this.prisma.product.findMany({
+      prisma.product.findMany({
         where,
         skip: options?.skip,
         take: options?.take ?? 50,
@@ -53,33 +60,40 @@ export class ProductsService {
           supplier: true,
         },
       }),
-      this.prisma.product.count({ where }),
+      prisma.product.count({ where }),
     ]);
 
     return { data, total };
   }
 
-  async findOne(id: string): Promise<Product> {
-    return this.prisma.product.findUniqueOrThrow({
-      where: { id, deletedAt: null },
+  async findOne(id: string, tenantId: string): Promise<Product | null> {
+    const prisma = this.prisma.getClient(tenantId);
+    const product = await prisma.product.findFirst({
+      where: { id },
       include: {
         category: true,
         supplier: true,
       },
     });
+    if (!product) {
+      throw new NotFoundException(`Product ${id} not found`);
+    }
+    return product;
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto): Promise<Product> {
-    await this.findOne(id);
-    return this.prisma.product.update({
+  async update(id: string, updateProductDto: UpdateProductDto, tenantId: string): Promise<Product> {
+    const prisma = this.prisma.getClient(tenantId);
+    await this.findOne(id, tenantId);
+    return prisma.product.update({
       where: { id },
       data: updateProductDto,
     });
   }
 
-  async remove(id: string): Promise<Product> {
-    await this.findOne(id);
-    return this.prisma.product.update({
+  async remove(id: string, tenantId: string): Promise<Product> {
+    const prisma = this.prisma.getClient(tenantId);
+    await this.findOne(id, tenantId);
+    return prisma.product.update({
       where: { id },
       data: { deletedAt: new Date() },
     });

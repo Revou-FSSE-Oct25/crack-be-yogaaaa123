@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Product } from '@prisma/client';
+import { PrismaClient, TenantRole } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
@@ -18,76 +18,114 @@ async function main() {
   // Load environment variables
   const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123';
   const staffPassword = process.env.DEFAULT_STAFF_PASSWORD || 'Staff@123';
+  const superAdminPassword = process.env.DEFAULT_SUPER_ADMIN_PASSWORD || 'SuperAdmin@123';
 
   // === 1. CLEANUP EXISTING DATA (respecting foreign key constraints) ===
   console.log('🧹 Cleaning up existing data...');
   await prisma.$transaction([
     prisma.salesReturnItem.deleteMany(),
     prisma.salesReturn.deleteMany(),
-    // Order items before parent orders
     prisma.orderItem.deleteMany(),
     prisma.purchaseOrderItem.deleteMany(),
-    // Orders
     prisma.salesOrder.deleteMany(),
     prisma.purchaseOrder.deleteMany(),
-    // Stock transactions
     prisma.stockTransaction.deleteMany(),
-    // Master data
     prisma.product.deleteMany(),
     prisma.category.deleteMany(),
     prisma.supplier.deleteMany(),
-    prisma.user.deleteMany(),
+    prisma.tenantMember.deleteMany(),
+    prisma.refreshToken.deleteMany(),
+    prisma.activityLog.deleteMany(),
+    prisma.tenantUser.deleteMany(),
+    prisma.tenant.deleteMany(),
+    prisma.platformUser.deleteMany(),
   ]);
   console.log('✅ Data cleanup completed.');
 
-  // === 2. CREATE USERS ===
-  console.log('👤 Creating Users...');
+  // === 2. CREATE TENANT ===
+  console.log('🏪 Creating Tenant...');
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: 'Default Store',
+      slug: 'default-store',
+    },
+  });
+  console.log(`✅ Tenant created: ${tenant.name} (${tenant.slug})`);
+
+  // === 3. CREATE PLATFORM USER (owner) ===
+  console.log('👤 Creating Platform User...');
+  const platformUser = await prisma.platformUser.create({
+    data: {
+      email: 'owner@inventory.com',
+      name: 'Store Owner',
+      passwordHash: await bcrypt.hash(adminPassword, 10),
+    },
+  });
+  console.log(`✅ Platform User created: ${platformUser.email}`);
+
+  // === 4. CREATE TENANT MEMBER ===
+  console.log('🔗 Creating Tenant Member...');
+  await prisma.tenantMember.create({
+    data: {
+      role: 'OWNER',
+      platformUserId: platformUser.id,
+      tenantId: tenant.id,
+    },
+  });
+  console.log('✅ Tenant Member created.');
+
+  // === 5. CREATE TENANT USERS ===
+  console.log('👤 Creating Tenant Users...');
   const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
   const staffPasswordHash = await bcrypt.hash(staffPassword, 10);
 
-  const adminUser = await prisma.user.create({
+  const adminUser = await prisma.tenantUser.create({
     data: {
       username: 'admin',
-      email: 'admin@inventory.com',
       passwordHash: adminPasswordHash,
-      role: Role.ADMIN,
+      role: TenantRole.ADMIN,
+      displayName: 'Admin',
+      tenantId: tenant.id,
     },
   });
 
-  const staffUser = await prisma.user.create({
+  const staffUser = await prisma.tenantUser.create({
     data: {
       username: 'staff',
-      email: 'staff@inventory.com',
       passwordHash: staffPasswordHash,
-      role: Role.STAFF,
+      role: TenantRole.STAFF,
+      displayName: 'Staff',
+      tenantId: tenant.id,
     },
   });
-  console.log(
-    `✅ Users created: ${adminUser.username} & ${staffUser.username}.`,
-  );
+  console.log(`✅ Tenant Users created: ${adminUser.username} & ${staffUser.username}.`);
 
+  // === 6. CREATE CATEGORIES ===
   console.log('📦 Creating Categories...');
   const electronics = await prisma.category.create({
     data: {
       name: 'Electronics',
       description: 'Electronic devices and accessories',
+      tenantId: tenant.id,
     },
   });
   const stationery = await prisma.category.create({
     data: {
       name: 'Stationery',
       description: 'Office and school supplies',
+      tenantId: tenant.id,
     },
   });
   const furniture = await prisma.category.create({
     data: {
       name: 'Furniture',
       description: 'Office and home furniture',
+      tenantId: tenant.id,
     },
   });
   console.log('✅ Categories created.');
 
-  // === 4. CREATE SUPPLIERS ===
+  // === 7. CREATE SUPPLIERS ===
   console.log('🏢 Creating Suppliers...');
   const supplierA = await prisma.supplier.create({
     data: {
@@ -96,6 +134,7 @@ async function main() {
       phone: '+1-555-0101',
       email: 'contact@technova.com',
       address: '123 Tech Park, Silicon Valley',
+      tenantId: tenant.id,
     },
   });
   const supplierB = await prisma.supplier.create({
@@ -105,14 +144,14 @@ async function main() {
       phone: '+1-555-0202',
       email: 'sales@officedepotmax.com',
       address: '456 Commerce St, Business District',
+      tenantId: tenant.id,
     },
   });
   console.log('✅ Suppliers created.');
 
-  // === 5. CREATE PRODUCTS (without initial stock — stock comes from PO) ===
+  // === 8. CREATE PRODUCTS ===
   console.log('🛒 Creating Products...');
 
-  // Purchase prices (cost) for each product — used for averageCost calculation
   const purchasePrices = [20.0, 70.0, 200.0, 3.5, 6.0, 120.0];
 
   const productsData = [
@@ -121,9 +160,9 @@ async function main() {
       name: 'Wireless Mouse',
       description: 'Ergonomic wireless mouse with 2.4GHz receiver',
       price: 25.5,
-      stockQuantity: 0, // Will be populated by purchase order
+      stockQuantity: 0,
       reorderLevel: 10,
-      averageCost: 0, // Will be calculated when PO is received
+      averageCost: 0,
       categoryId: electronics.id,
       supplierId: supplierA.id,
     },
@@ -184,17 +223,21 @@ async function main() {
     },
   ];
 
-  const products: Product[] = [];
+  const products: any[] = [];
   for (const pData of productsData) {
-    const product = await prisma.product.create({ data: pData });
+    const product = await prisma.product.create({
+      data: {
+        ...pData,
+        tenantId: tenant.id,
+      },
+    });
     products.push(product);
   }
   console.log(`✅ ${products.length} Products created.`);
 
-  // === 6. PURCHASE ORDERS (properly updates stock + averageCost) ===
-  console.log('📦 Processing Purchase Orders (with stock & averageCost)...');
+  // === 9. PURCHASE ORDERS ===
+  console.log('📦 Processing Purchase Orders...');
 
-  // Purchase Order from Supplier A — items: Mouse(50), Keyboard(30), Monitor(20)
   const po1Items = [
     { productId: products[0].id, quantity: 50, unitPrice: purchasePrices[0] },
     { productId: products[1].id, quantity: 30, unitPrice: purchasePrices[1] },
@@ -204,14 +247,12 @@ async function main() {
   const po1 = await prisma.purchaseOrder.create({
     data: {
       orderNumber: 'PO-1001',
-      totalPrice: po1Items.reduce(
-        (sum, i) => sum + i.quantity * i.unitPrice,
-        0,
-      ),
+      totalPrice: po1Items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0),
       status: 'RECEIVED',
       notes: 'Initial stock purchase from TechNova',
       supplierId: supplierA.id,
       userId: adminUser.id,
+      tenantId: tenant.id,
       receivedAt: new Date(),
       items: {
         create: po1Items.map((i) => ({
@@ -223,13 +264,12 @@ async function main() {
     },
   });
 
-  // Update stock and averageCost for PO-1001 items
   for (const item of po1Items) {
     await prisma.product.update({
       where: { id: item.productId },
       data: {
         stockQuantity: { increment: item.quantity },
-        averageCost: item.unitPrice, // First purchase — averageCost = purchase price
+        averageCost: item.unitPrice,
       },
     });
     await prisma.stockTransaction.create({
@@ -240,12 +280,12 @@ async function main() {
         notes: 'Purchase Order Received',
         productId: item.productId,
         userId: adminUser.id,
+        tenantId: tenant.id,
       },
     });
   }
   console.log(`✅ Purchase Order ${po1.orderNumber} created & stock updated.`);
 
-  // Purchase Order from Supplier B — items: Notebook(100), Pens(80), Chair(15)
   const po2Items = [
     { productId: products[3].id, quantity: 100, unitPrice: purchasePrices[3] },
     { productId: products[4].id, quantity: 80, unitPrice: purchasePrices[4] },
@@ -255,14 +295,12 @@ async function main() {
   const po2 = await prisma.purchaseOrder.create({
     data: {
       orderNumber: 'PO-1002',
-      totalPrice: po2Items.reduce(
-        (sum, i) => sum + i.quantity * i.unitPrice,
-        0,
-      ),
+      totalPrice: po2Items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0),
       status: 'RECEIVED',
       notes: 'Office supplies purchase from Office Depot',
       supplierId: supplierB.id,
       userId: adminUser.id,
+      tenantId: tenant.id,
       receivedAt: new Date(),
       items: {
         create: po2Items.map((i) => ({
@@ -290,20 +328,21 @@ async function main() {
         notes: 'Purchase Order Received',
         productId: item.productId,
         userId: adminUser.id,
+        tenantId: tenant.id,
       },
     });
   }
   console.log(`✅ Purchase Order ${po2.orderNumber} created & stock updated.`);
 
   // Reload products to get updated stock and averageCost
-  const updatedProducts: Product[] = [];
+  const updatedProducts: any[] = [];
   for (const p of products) {
     const up = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
     updatedProducts.push(up);
   }
 
-  // === 7. SALES ORDERS (with proper COGS and profit calculation) ===
-  console.log('🛍️ Creating Sales Orders (with COGS & profit)...');
+  // === 10. SALES ORDERS ===
+  console.log('🛍️ Creating Sales Orders...');
 
   // Sales Order 1: 2x Mouse + 1x Keyboard
   const so1Items = [
@@ -311,10 +350,7 @@ async function main() {
     { product: updatedProducts[1], quantity: 1, unitPrice: 85 },
   ];
 
-  const so1TotalPrice = so1Items.reduce(
-    (sum, i) => sum + i.quantity * i.unitPrice,
-    0,
-  );
+  const so1TotalPrice = so1Items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
   const so1TotalCogs = so1Items.reduce(
     (sum, i) => sum + i.quantity * Number(i.product.averageCost),
     0,
@@ -330,20 +366,19 @@ async function main() {
       totalCogs: so1TotalCogs,
       totalProfit: so1TotalProfit,
       userId: staffUser.id,
+      tenantId: tenant.id,
       items: {
         create: so1Items.map((i) => ({
           productId: i.product.id,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
           cogs: Number(i.product.averageCost) * i.quantity,
-          profitMargin:
-            (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
+          profitMargin: (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
         })),
       },
     },
   });
 
-  // Decrement stock for SO-1001
   for (const item of so1Items) {
     await prisma.product.update({
       where: { id: item.product.id },
@@ -357,12 +392,11 @@ async function main() {
         notes: 'Sales Order Completed',
         productId: item.product.id,
         userId: staffUser.id,
+        tenantId: tenant.id,
       },
     });
   }
-  console.log(
-    `✅ Sales Order ${so1.orderNumber} created (COGS: $${so1TotalCogs.toFixed(2)}, Profit: $${so1TotalProfit.toFixed(2)}).`,
-  );
+  console.log(`✅ Sales Order ${so1.orderNumber} created.`);
 
   // Sales Order 2: 5x Notebook + 1x Chair
   const so2Items = [
@@ -370,10 +404,7 @@ async function main() {
     { product: updatedProducts[5], quantity: 1, unitPrice: 150 },
   ];
 
-  const so2TotalPrice = so2Items.reduce(
-    (sum, i) => sum + i.quantity * i.unitPrice,
-    0,
-  );
+  const so2TotalPrice = so2Items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
   const so2TotalCogs = so2Items.reduce(
     (sum, i) => sum + i.quantity * Number(i.product.averageCost),
     0,
@@ -389,14 +420,14 @@ async function main() {
       totalCogs: so2TotalCogs,
       totalProfit: so2TotalProfit,
       userId: staffUser.id,
+      tenantId: tenant.id,
       items: {
         create: so2Items.map((i) => ({
           productId: i.product.id,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
           cogs: Number(i.product.averageCost) * i.quantity,
-          profitMargin:
-            (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
+          profitMargin: (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
         })),
       },
     },
@@ -415,18 +446,16 @@ async function main() {
         notes: 'Sales Order Completed',
         productId: item.product.id,
         userId: staffUser.id,
+        tenantId: tenant.id,
       },
     });
   }
-  console.log(
-    `✅ Sales Order ${so2.orderNumber} created (COGS: $${so2TotalCogs.toFixed(2)}, Profit: $${so2TotalProfit.toFixed(2)}).`,
-  );
+  console.log(`✅ Sales Order ${so2.orderNumber} created.`);
 
   // Sales Order 3 (Pending — no stock deduction)
   const so3Items = [{ product: updatedProducts[2], quantity: 1, unitPrice: 250 }];
   const so3TotalPrice = 250;
-  const so3TotalCogs =
-    1 * Number(updatedProducts[2].averageCost);
+  const so3TotalCogs = 1 * Number(updatedProducts[2].averageCost);
   const so3TotalProfit = so3TotalPrice - so3TotalCogs;
 
   const so3 = await prisma.salesOrder.create({
@@ -438,25 +467,37 @@ async function main() {
       totalCogs: so3TotalCogs,
       totalProfit: so3TotalProfit,
       userId: staffUser.id,
+      tenantId: tenant.id,
       items: {
         create: so3Items.map((i) => ({
           productId: i.product.id,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
           cogs: Number(i.product.averageCost) * i.quantity,
-          profitMargin:
-            (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
+          profitMargin: (i.unitPrice - Number(i.product.averageCost)) * i.quantity,
         })),
       },
     },
   });
   console.log(`✅ Sales Order ${so3.orderNumber} (PENDING) created.`);
 
-  // === 8. DATABASE SUMMARY ===
+  // === 11. CREATE PLATFORM ADMIN (Super Admin) ===
+  console.log('🛡️ Creating Platform Admin (Super Admin)...');
+  await prisma.platformAdmin.create({
+    data: {
+      email: 'superadmin@crack.com',
+      name: 'Super Admin',
+      passwordHash: await bcrypt.hash(superAdminPassword, 10),
+    },
+  });
+  console.log('✅ Platform Admin created: superadmin@crack.com');
+
+  // === 12. DATABASE SUMMARY ===
   console.log('\n🎉 Database Seeding Completed Successfully!');
   console.log('===========================================');
 
-  const userCount = await prisma.user.count();
+  const tenantCount = await prisma.tenant.count();
+  const userCount = await prisma.tenantUser.count();
   const categoryCount = await prisma.category.count();
   const supplierCount = await prisma.supplier.count();
   const productCount = await prisma.product.count();
@@ -465,17 +506,15 @@ async function main() {
   const stockTransactionCount = await prisma.stockTransaction.count();
 
   console.log('📊 Database Summary:');
+  console.log(`   🏪 Tenants: ${tenantCount}`);
   console.log(`   👥 Users: ${userCount} (admin, staff)`);
   console.log(`   📦 Categories: ${categoryCount}`);
   console.log(`   🏢 Suppliers: ${supplierCount}`);
   console.log(`   🛒 Products: ${productCount}`);
   console.log(`   📦 Purchase Orders: ${purchaseOrderCount}`);
-  console.log(
-    `   🛍️  Sales Orders: ${salesOrderCount} (2 COMPLETED, 1 PENDING)`,
-  );
+  console.log(`   🛍️  Sales Orders: ${salesOrderCount} (2 COMPLETED, 1 PENDING)`);
   console.log(`   📊 Stock Transactions: ${stockTransactionCount}`);
 
-  // Show product stock & averageCost
   console.log('\n📦 Product Stock & Cost Summary:');
   const finalProducts = await prisma.product.findMany({
     orderBy: { sku: 'asc' },

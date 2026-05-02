@@ -1,0 +1,21 @@
+[project]
+name = "crack-ai"
+version = "0.1.0"
+description = "CrackPOS AI Assistant Service — Tool-based AI with per-user data isolation"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.31.0",
+    "fastapi>=0.136.1",
+    "httpx>=0.28.0",
+    "openai>=1.68.0",
+    "pydantic-settings>=2.14.0",
+    "python-dotenv>=1.2.2",
+    "python-jose[cryptography]>=3.5.0",
+    "slowapi>=0.1.9",
+    "structlog>=25.5.0",
+    "uvicorn[standard]>=0.46.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.25.0"]

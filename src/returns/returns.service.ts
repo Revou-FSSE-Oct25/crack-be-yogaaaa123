@@ -16,9 +16,10 @@ export class ReturnsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async createReturn(data: CreateReturnDto, userId: string) {
+  async createReturn(data: CreateReturnDto, userId: string, tenantId: string) {
     // 1. Fetch Sales Order and its items
-    const salesOrder = await this.prisma.salesOrder.findUnique({
+    const prisma = this.prisma.getClient(tenantId);
+    const salesOrder = await prisma.salesOrder.findFirst({
       where: { id: data.salesOrderId },
       include: { items: true },
     });
@@ -76,6 +77,7 @@ export class ReturnsService {
           status: ReturnStatus.COMPLETED,
           totalRefund,
           userId,
+          tenantId: salesOrder.tenantId,
           items: {
             create: returnItemsToCreate.map((item) => ({
               orderItemId: item.orderItemId,
@@ -109,6 +111,7 @@ export class ReturnsService {
             notes: `Return from Sales Order ${salesOrder.orderNumber}`,
             productId: returnItem.productId,
             userId,
+            tenantId: salesOrder.tenantId,
           },
         });
       }
@@ -141,9 +144,10 @@ export class ReturnsService {
     });
   }
 
-  async findAll(skip?: number, take?: number) {
+  async findAll(tenantId: string, skip?: number, take?: number) {
+    const prisma = this.prisma.getClient(tenantId);
     const [data, total] = await Promise.all([
-      this.prisma.salesReturn.findMany({
+      prisma.salesReturn.findMany({
         skip,
         take: take ?? 50,
         orderBy: { createdAt: 'desc' },
@@ -152,14 +156,15 @@ export class ReturnsService {
           user: { select: { username: true } },
         },
       }),
-      this.prisma.salesReturn.count(),
+      prisma.salesReturn.count(),
     ]);
 
     return { data, total };
   }
 
-  async findOne(id: string) {
-    return this.prisma.salesReturn.findUniqueOrThrow({
+  async findOne(tenantId: string, id: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const result = await prisma.salesReturn.findFirst({
       where: { id },
       include: {
         items: {
@@ -173,5 +178,9 @@ export class ReturnsService {
         user: true,
       },
     });
+    if (!result) {
+      throw new NotFoundException(`Sales Return ${id} not found`);
+    }
+    return result;
   }
 }

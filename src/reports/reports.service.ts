@@ -1,19 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { stringify } from 'csv-stringify/sync';
 
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async getSalesReport(startDate?: string, endDate?: string) {
-    const where: any = { deletedAt: null };
+  async getSalesReport(tenantId: string, startDate?: string, endDate?: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const where: any = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const orders = await prisma.salesOrder.findMany({
       where,
       include: {
         items: {
@@ -33,9 +35,9 @@ export class ReportsService {
     return { summary, orders };
   }
 
-  async getInventoryReport() {
-    const products = await this.prisma.product.findMany({
-      where: { deletedAt: null },
+  async getInventoryReport(tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const products = await prisma.product.findMany({
       include: {
         category: { select: { name: true } },
         supplier: { select: { name: true } },
@@ -52,15 +54,16 @@ export class ReportsService {
     return { summary, products };
   }
 
-  async getProfitLoss(startDate?: string, endDate?: string) {
-    const where: any = { deletedAt: null };
+  async getProfitLoss(tenantId: string, startDate?: string, endDate?: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const where: any = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const orders = await prisma.salesOrder.findMany({
       where: {
         ...where,
         status: 'COMPLETED',
@@ -81,5 +84,108 @@ export class ReportsService {
       profitMargin: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0,
       averageOrderValue,
     };
+  }
+
+  async exportSalesCsv(tenantId: string, startDate?: string, endDate?: string): Promise<string> {
+    const prisma = this.prisma.getClient(tenantId);
+    const where: any = {};
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const orders = await prisma.salesOrder.findMany({
+      where,
+      include: {
+        items: {
+          include: { product: { select: { name: true, sku: true } } },
+        },
+        user: { select: { username: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const records: any[] = [];
+    for (const order of orders) {
+      for (const item of order.items) {
+        records.push({
+          'Order Number': order.orderNumber,
+          Status: order.status,
+          Product: item.product.name,
+          SKU: item.product.sku,
+          Quantity: item.quantity,
+          'Unit Price': Number(item.unitPrice),
+          'Total Price': Number(order.totalPrice),
+          Profit: Number(order.totalProfit),
+          Cashier: order.user?.username || '',
+          Date: order.createdAt.toISOString(),
+        });
+      }
+    }
+
+    return stringify(records, { header: true });
+  }
+
+  async exportInventoryCsv(tenantId: string): Promise<string> {
+    const prisma = this.prisma.getClient(tenantId);
+    const products = await prisma.product.findMany({
+      include: {
+        category: { select: { name: true } },
+        supplier: { select: { name: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const records = products.map((p) => ({
+      SKU: p.sku,
+      'Product Name': p.name,
+      Category: p.category?.name || '',
+      Supplier: p.supplier?.name || '',
+      'Stock Quantity': p.stockQuantity,
+      'Reorder Level': p.reorderLevel,
+      'Average Cost': Number(p.averageCost),
+      Price: Number(p.price),
+      'Total Value': Number(p.averageCost) * p.stockQuantity,
+      'Needs Reorder': p.stockQuantity <= p.reorderLevel ? 'Yes' : 'No',
+    }));
+
+    return stringify(records, { header: true });
+  }
+
+  async exportProfitLossCsv(
+    tenantId: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<string> {
+    const prisma = this.prisma.getClient(tenantId);
+    const where: any = { status: 'COMPLETED' };
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const orders = await prisma.salesOrder.findMany({
+      where,
+      include: {
+        user: { select: { username: true } },
+        items: {
+          include: { product: { select: { name: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const records = orders.map((o) => ({
+      'Order Number': o.orderNumber,
+      Date: o.createdAt.toISOString(),
+      Revenue: Number(o.totalPrice),
+      COGS: Number(o.totalCogs),
+      Profit: Number(o.totalProfit),
+      Cashier: o.user?.username || '',
+    }));
+
+    return stringify(records, { header: true });
   }
 }

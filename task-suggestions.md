@@ -1,192 +1,217 @@
-# 🚀 Saran Fitur Tambahan untuk Inventory Management API
+# 🚀 Suggested Additional Features for Inventory Management API
 
-Project ini sudah sangat solid dengan fitur-fitur core seperti auth, CRUD, inventory, sales, purchase, returns, dashboard, reports, activity log, upload, dan health check. Berikut saran fitur tambahan yang bisa bikin aplikasi makin powerful:
+This project is already very solid with core features like auth, CRUD, inventory, sales, purchase, returns, dashboard, reports, activity log, upload, and health check. Below are suggested additional features that would make the application even more powerful:
 
 ---
 
-## 📌 Phase 1 — Customer Management (Wajib untuk Bisnis Retail)
+## 📌 Phase 1 — Customer Management (Essential for Retail Business)
 
 ### 1. Customer Module
-- **Model Customer**: `id, name, email, phone, address, loyaltyPoints, totalSpent, createdAt, deletedAt`
-- **CRUD Customer**: Create, Read, Update, Delete (soft delete)
-- **Integrasi ke SalesOrder**: Ganti `customerId` string biasa jadi foreign key ke tabel Customer
-- **Customer History**: Lihat riwayat pembelian per customer
-- **Manfaat**: Tracking pelanggan setia, analisis pembelian, program loyalitas
+
+- **Customer Model**: `id, name, email, phone, address, loyaltyPoints, totalSpent, createdAt, deletedAt`
+- **Customer CRUD**: Create, Read, Update, Delete (soft delete)
+- **SalesOrder Integration**: Replace plain `customerId` string with foreign key to Customer table
+- **Customer History**: View purchase history per customer
+- **Benefits**: Track loyal customers, analyze purchases, loyalty programs
 
 ### 2. Customer Loyalty / Points System
-- **Auto-accumulate points** setiap transaksi (misal: 1 point per 10rb belanja)
-- **Redeem points** sebagai diskon di transaksi berikutnya
-- **Tier membership**: Regular, Silver, Gold, Platinum (berdasarkan total spending)
+
+- **Auto-accumulate points** per transaction (e.g., 1 point per 10k spent)
+- **Redeem points** as discount on next transaction
+- **Tier membership**: Regular, Silver, Gold, Platinum (based on total spending)
 
 ---
 
 ## 📌 Phase 2 — Notification & Alert System
 
 ### 3. Low Stock Notification (Email/In-App)
-- **Auto-detect** produk dengan stok di bawah `reorderLevel`
-- **Notifikasi** via email (Nodemailer) atau in-app notification
-- **Scheduled job** (cron) untuk cek stok setiap jam
-- **Webhook** ke external service (Slack, Telegram, Discord)
 
-### 4. Expiry Date / Batch Tracking (untuk FMCG/Food)
-- **Model ProductBatch**: `id, productId, batchNumber, expiryDate, quantity, purchaseDate`
-- **FIFO tracking**: Saat sales, ambil dari batch yang paling mendekati expiry
-- **Alert**: Notifikasi H-7 sebelum expired
-- **Cocok untuk**: Bisnis makanan, minuman, obat-obatan
+- **Auto-detect** products with stock below `reorderLevel`
+- **Notification** via email (Nodemailer) or in-app notification
+- **Scheduled job** (cron) to check stock every hour
+- **Webhook** to external services (Slack, Telegram, Discord)
+
+### 4. Expiry Date / Batch Tracking (for FMCG/Food)
+
+- **ProductBatch Model**: `id, productId, batchNumber, expiryDate, quantity, purchaseDate`
+- **FIFO tracking**: When selling, take from the batch closest to expiry
+- **Alert**: H-7 notification before expiry
+- **Suitable for**: Food, beverage, pharmaceutical businesses
 
 ---
 
 ## 📌 Phase 3 — Multi-Warehouse / Location Management
 
 ### 5. Warehouse Module
-- **Model Warehouse**: `id, name, location, address, isActive`
-- **Stock per Warehouse**: Setiap produk punya stok di masing-masing gudang
-- **Transfer Stock**: Pindahin stok antar gudang (IN/OUT transfer)
-- **Manfaat**: Bisnis dengan multiple cabang/gudang
 
-### 6. Store / Cabang Management
-- **Model Store**: `id, name, address, phone, isActive`
-- **User per Store**: Staff hanya bisa akses data store-nya sendiri
-- **Multi-tenant ringan**: Data terisolasi per store
+- **Warehouse Model**: `id, name, location, address, isActive`
+- **Stock per Warehouse**: Each product has stock in each warehouse
+- **Stock Transfer**: Move stock between warehouses (IN/OUT transfer)
+- **Benefits**: Businesses with multiple branches/warehouses
+
+### 6. Store / Branch Management
+
+- **Store Model**: `id, name, address, phone, isActive`
+- **User per Store**: Staff can only access their own store data
+- **Lightweight multi-tenant**: Data isolated per store
 
 ---
 
 ## 📌 Phase 4 — Advanced Reporting & Analytics
 
 ### 7. Export to Excel (XLSX)
-- **Export semua report** ke format Excel (.xlsx) pakai `exceljs` atau `xlsx`
-- **Export dengan formatting**: Styling, merged cells, auto-width
-- **Schedule export**: Kirim report via email otomatis tiap minggu/bulan
+
+- **Export all reports** to Excel format (.xlsx) using `exceljs` or `xlsx`
+- **Export with formatting**: Styling, merged cells, auto-width
+- **Schedule export**: Send reports via email automatically every week/month
 
 ### 8. Data Visualization API
-- **Chart data endpoints**: Data siap pakai untuk frontend chart
-  - Penjualan per hari/minggu/bulan
-  - Top 10 produk terlaris
-  - Kategori paling laku
-  - Trend profit/loss
-- **Format response**: Array of `{ label, value }` atau `{ date, value }`
 
-### 9. Forecasting / Prediksi Stok
-- **Simple forecasting**: Prediksi kebutuhan stok berdasarkan rata-rata penjualan 30 hari terakhir
-- **Reorder suggestion**: "Produk X perlu di-order Y unit dalam Z hari"
-- **Seasonal detection**: Deteksi pola musiman (misal: Lebaran, Natal)
+- **Chart data endpoints**: Ready-to-use data for frontend charts
+  - Sales per day/week/month
+  - Top 10 best-selling products
+  - Best-selling categories
+  - Profit/loss trend
+- **Response format**: Array of `{ label, value }` or `{ date, value }`
+
+### 9. Forecasting / Stock Prediction
+
+- **Simple forecasting**: Predict stock needs based on average sales over the last 30 days
+- **Reorder suggestion**: "Product X needs to be reordered Y units within Z days"
+- **Seasonal detection**: Detect seasonal patterns (e.g., Ramadan, Christmas)
 
 ---
 
 ## 📌 Phase 5 — Barcode & QR Code
 
 ### 10. Barcode Generation
-- **Generate barcode** untuk setiap produk (berdasarkan SKU)
-- **Endpoint**: `GET /products/:id/barcode` → return image PNG
-- **Library**: `bwip-js` atau `jsbarcode`
-- **Scan barcode**: Endpoint untuk lookup produk via barcode
 
-### 11. QR Code untuk Label Produk
-- **QR Code** berisi link ke detail produk
-- **QR untuk stock opname**: Scan QR → update stok via mobile
+- **Generate barcode** for each product (based on SKU)
+- **Endpoint**: `GET /products/:id/barcode` → return image PNG
+- **Library**: `bwip-js` or `jsbarcode`
+- **Scan barcode**: Endpoint for product lookup via barcode
+
+### 11. QR Code for Product Labels
+
+- **QR Code** containing link to product details
+- **QR for stock take**: Scan QR → update stock via mobile
 
 ---
 
 ## 📌 Phase 6 — Discount & Promo Engine
 
 ### 12. Discount Module
-- **Model Discount**: `id, name, type(PERCENTAGE/FIXED), value, minPurchase, maxDiscount, startDate, endDate, isActive`
-- **Product-specific discount**: Diskon untuk produk tertentu
-- **Category discount**: Diskon untuk seluruh kategori
-- **Bulk discount**: Beli banyak dapat diskon (tiered pricing)
-- **Auto-apply**: Saat create sales order, hitung diskon otomatis
+
+- **Discount Model**: `id, name, type(PERCENTAGE/FIXED), value, minPurchase, maxDiscount, startDate, endDate, isActive`
+- **Product-specific discount**: Discount for specific products
+- **Category discount**: Discount for an entire category
+- **Bulk discount**: Buy more get more discount (tiered pricing)
+- **Auto-apply**: When creating a sales order, calculate discount automatically
 
 ### 13. Coupon / Voucher System
-- **Model Coupon**: `id, code, discountId, maxUses, currentUses, perUserLimit, isActive`
+
+- **Coupon Model**: `id, code, discountId, maxUses, currentUses, perUserLimit, isActive`
 - **Redeem coupon**: Endpoint `POST /coupons/redeem`
-- **Validate coupon**: Cek masa berlaku, quota, minimum purchase
+- **Validate coupon**: Check validity period, quota, minimum purchase
 
 ---
 
 ## 📌 Phase 7 — Payment & Invoice
 
 ### 14. Payment Tracking
-- **Model Payment**: `id, salesOrderId, amount, method(CASH/TRANSFER/DEBIT/CREDIT/QRIS), status(PAID/UNPAID/PARTIAL), paidAt`
-- **Partial payment**: Bayar cicilan
-- **Multi-payment**: Satu order bisa bayar dengan multiple metode
-- **Due date tracking**: Invoice jatuh tempo
+
+- **Payment Model**: `id, salesOrderId, amount, method(CASH/TRANSFER/DEBIT/CREDIT/QRIS), status(PAID/UNPAID/PARTIAL), paidAt`
+- **Partial payment**: Installment payments
+- **Multi-payment**: One order can be paid with multiple methods
+- **Due date tracking**: Invoice due dates
 
 ### 15. Invoice Generation
+
 - **Auto-generate invoice number** (format: INV/2026/04/0001)
-- **Invoice template**: HTML template yang bisa di-render ke PDF
+- **Invoice template**: HTML template that can be rendered to PDF
 - **Endpoint**: `GET /sales/:id/invoice` → return PDF
-- **Library**: `pdfkit` atau `puppeteer` untuk generate PDF
+- **Library**: `pdfkit` or `puppeteer` for PDF generation
 
 ---
 
 ## 📌 Phase 8 — Integration & API
 
 ### 16. Webhook System
-- **Model Webhook**: `id, url, events[], secret, isActive, lastTriggeredAt`
-- **Event types**: `order.created`, `order.completed`, `stock.low`, `product.created`, dll
-- **Retry mechanism**: Retry 3x jika gagal
-- **Payload signature**: HMAC signature untuk verifikasi
+
+- **Webhook Model**: `id, url, events[], secret, isActive, lastTriggeredAt`
+- **Event types**: `order.created`, `order.completed`, `stock.low`, `product.created`, etc.
+- **Retry mechanism**: Retry 3x on failure
+- **Payload signature**: HMAC signature for verification
 
 ### 17. External API Integration
-- **E-commerce sync**: Integrasi dengan Shopify, WooCommerce, Tokopedia, Shopee
-- **Accounting sync**: Export data ke Accurate, Jurnal, atau Xero
-- **Shipping integration**: RajaOngkir / Biteship untuk cek ongkir
+
+- **E-commerce sync**: Integration with Shopify, WooCommerce, Tokopedia, Shopee
+- **Accounting sync**: Export data to Accurate, Jurnal, or Xero
+- **Shipping integration**: RajaOngkir / Biteship for shipping cost calculation
 
 ---
 
 ## 📌 Phase 9 — User Experience & Security
 
 ### 18. Two-Factor Authentication (2FA)
+
 - **TOTP-based** (Google Authenticator, Authy)
 - **Setup flow**: Generate secret → scan QR → verify code
-- **Backup codes**: 8 backup code untuk recovery
-- **Force 2FA**: Admin bisa mewajibkan 2FA untuk role tertentu
+- **Backup codes**: 8 backup codes for recovery
+- **Force 2FA**: Admin can require 2FA for specific roles
 
 ### 19. Session Management
-- **Lihat session aktif**: Device, IP, last active, login time
-- **Revoke session**: Force logout dari session tertentu
-- **Max session limit**: Batasi jumlah session per user
+
+- **View active sessions**: Device, IP, last active, login time
+- **Revoke session**: Force logout from a specific session
+- **Max session limit**: Limit number of sessions per user
 
 ### 20. Audit Trail Enhancement
-- **Before/After snapshot**: Simpan data sebelum dan sesudah update
-- **IP Address & User Agent**: Catat di setiap activity log
-- **Diff view**: Endpoint untuk lihat perubahan spesifik
-- **Retention policy**: Auto-delete log > 90 hari
+
+- **Before/After snapshot**: Save data before and after update
+- **IP Address & User Agent**: Record in every activity log
+- **Diff view**: Endpoint to view specific changes
+- **Retention policy**: Auto-delete logs older than 90 days
 
 ---
 
 ## 📌 Phase 10 — Operational Features
 
-### 21. Stock Opname (Stock Take)
-- **Model StockOpname**: `id, name, status(PLANNED/IN_PROGRESS/COMPLETED), scheduledDate, completedAt`
-- **Model StockOpnameItem**: `id, opnameId, productId, systemQuantity, actualQuantity, difference, notes`
-- **Adjustment otomatis**: Setelah opname selesai, auto-adjust stok
-- **Report**: Selisih stok sistem vs aktual
+### 21. Stock Take (Stock Opname)
+
+- **StockOpname Model**: `id, name, status(PLANNED/IN_PROGRESS/COMPLETED), scheduledDate, completedAt`
+- **StockOpnameItem Model**: `id, opnameId, productId, systemQuantity, actualQuantity, difference, notes`
+- **Auto-adjustment**: After stock take completes, auto-adjust stock
+- **Report**: System vs actual stock discrepancies
 
 ### 22. Purchase Request / Approval Flow
-- **Model PurchaseRequest**: `id, requestedBy, status(PENDING/APPROVED/REJECTED), notes`
-- **Approval workflow**: Request → Manager approve → Staff buat PO
-- **Multi-level approval**: Untuk pembelian di atas nominal tertentu
+
+- **PurchaseRequest Model**: `id, requestedBy, status(PENDING/APPROVED/REJECTED), notes`
+- **Approval workflow**: Request → Manager approve → Staff create PO
+- **Multi-level approval**: For purchases above a certain amount
 
 ### 23. Goods Received Note (GRN)
-- **Model GRN**: `id, purchaseOrderId, receivedBy, receivedAt, notes`
-- **Partial receive**: Terima barang sebagian
-- **Quality check**: Catat barang rusak/reject saat diterima
-- **Auto-update**: Setelah GRN, stok otomatis bertambah
+
+- **GRN Model**: `id, purchaseOrderId, receivedBy, receivedAt, notes`
+- **Partial receive**: Receive items partially
+- **Quality check**: Record damaged/rejected items upon receipt
+- **Auto-update**: After GRN, stock automatically increases
 
 ---
 
 ## 📌 Phase 11 — Mobile & Offline
 
 ### 24. Mobile API Optimization
-- **GraphQL endpoint**: Alternatif REST untuk mobile (pakai `@nestjs/graphql`)
+
+- **GraphQL endpoint**: Alternative to REST for mobile (using `@nestjs/graphql`)
 - **Compressed response**: Gzip/Brotli compression
-- **Pagination with cursor**: Lebih efisien untuk infinite scroll
-- **Offline sync**: Endpoint untuk sinkronisasi data offline
+- **Cursor-based pagination**: More efficient for infinite scroll
+- **Offline sync**: Endpoint for offline data synchronization
 
 ### 25. Push Notification
+
 - **Firebase Cloud Messaging (FCM)** integration
-- **Event-based**: Notifikasi saat stok habis, order masuk, payment diterima
+- **Event-based**: Notification when stock runs out, order comes in, payment received
 - **Device token management**: Register/unregister device
 
 ---
@@ -194,40 +219,43 @@ Project ini sudah sangat solid dengan fitur-fitur core seperti auth, CRUD, inven
 ## 📌 Phase 12 — Performance & DevOps
 
 ### 26. Redis Caching
-- **Ganti in-memory cache** ke Redis (distributed cache)
-- **Cache invalidation**: Auto-invalidate saat data berubah
-- **Session store**: Simpan session di Redis
-- **Queue**: Bull queue untuk background job (email, export, notifikasi)
+
+- **Replace in-memory cache** with Redis (distributed cache)
+- **Cache invalidation**: Auto-invalidate when data changes
+- **Session store**: Store sessions in Redis
+- **Queue**: Bull queue for background jobs (email, export, notification)
 
 ### 27. Database Optimization
-- **Read replicas**: Pisahkan read/write database
-- **Materialized views**: Untuk dashboard dan report yang berat
-- **Table partitioning**: Untuk activity_logs dan stock_transactions
-- **Connection pooling**: Optimasi koneksi database
+
+- **Read replicas**: Separate read/write databases
+- **Materialized views**: For heavy dashboard and report queries
+- **Table partitioning**: For activity_logs and stock_transactions
+- **Connection pooling**: Database connection optimization
 
 ### 28. API Versioning
+
 - **URL-based**: `/api/v1/products`, `/api/v2/products`
 - **Header-based**: `Accept: application/vnd.inventory.v2+json`
-- **Backward compatibility**: Maintain old endpoints selama transisi
+- **Backward compatibility**: Maintain old endpoints during transition
 
 ---
 
-## 🏆 Recommended Priority (Berdasarkan Dampak vs Effort)
+## 🏆 Recommended Priority (Based on Impact vs Effort)
 
-| Priority | Feature | Impact | Effort |
-|----------|---------|--------|--------|
-| 🔴 P0 | Customer Module | Sangat Tinggi | Rendah |
-| 🔴 P0 | Low Stock Notification | Tinggi | Rendah |
-| 🟡 P1 | Discount/Promo Engine | Tinggi | Sedang |
-| 🟡 P1 | Export Excel | Sedang | Rendah |
-| 🟡 P1 | Payment Tracking | Tinggi | Sedang |
-| 🟢 P2 | Invoice PDF | Sedang | Sedang |
-| 🟢 P2 | Stock Opname | Tinggi | Sedang |
-| 🟢 P2 | Multi-Warehouse | Tinggi | Tinggi |
-| 🔵 P3 | 2FA | Sedang | Sedang |
-| 🔵 P3 | Webhook | Sedang | Sedang |
-| 🔵 P3 | Barcode/QR | Rendah | Rendah |
+| Priority | Feature                | Impact    | Effort |
+| -------- | ---------------------- | --------- | ------ |
+| 🔴 P0    | Customer Module        | Very High | Low    |
+| 🔴 P0    | Low Stock Notification | High      | Low    |
+| 🟡 P1    | Discount/Promo Engine  | High      | Medium |
+| 🟡 P1    | Export Excel           | Medium    | Low    |
+| 🟡 P1    | Payment Tracking       | High      | Medium |
+| 🟢 P2    | Invoice PDF            | Medium    | Medium |
+| 🟢 P2    | Stock Take             | High      | Medium |
+| 🟢 P2    | Multi-Warehouse        | High      | High   |
+| 🔵 P3    | 2FA                    | Medium    | Medium |
+| 🔵 P3    | Webhook                | Medium    | Medium |
+| 🔵 P3    | Barcode/QR             | Low       | Low    |
 
 ---
 
-> **Catatan**: Semua saran di atas bisa diimplementasikan secara bertahap. Mulai dari yang **P0 (High Impact, Low Effort)** dulu untuk dapat value cepat, lalu lanjut ke yang lebih kompleks.
+> **Note**: All suggestions above can be implemented incrementally. Start with **P0 (High Impact, Low Effort)** first for quick value, then move to more complex ones.

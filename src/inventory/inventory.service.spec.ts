@@ -14,6 +14,7 @@ const mockPrismaService = () => ({
   },
   $transaction: jest.fn(),
   $queryRaw: jest.fn(),
+  getClient: jest.fn(),
 });
 
 describe('InventoryService', () => {
@@ -36,6 +37,7 @@ describe('InventoryService', () => {
   describe('adjustStock', () => {
     const productId = 'product-uuid-1';
     const userId = 'user-uuid-1';
+    const tenantId = 'tenant-uuid-1';
 
     it('should increment stock for IN transaction', async () => {
       const mockTransaction = {
@@ -51,11 +53,14 @@ describe('InventoryService', () => {
         stockQuantity: 60,
       };
 
-      prisma.product.findUniqueOrThrow.mockResolvedValue({
-        id: productId,
-        name: 'Test Product',
-        stockQuantity: 50,
-      });
+      const mockClient = {
+        product: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: productId, name: 'Test Product', stockQuantity: 50 }),
+        },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
       prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         const tx = {
@@ -69,7 +74,7 @@ describe('InventoryService', () => {
         return await callback(tx);
       });
 
-      const result = await service.adjustStock(productId, userId, 10, TransactionType.IN);
+      const result = await service.adjustStock(productId, userId, tenantId, 10, TransactionType.IN);
 
       expect(result.transaction).toEqual(mockTransaction);
       expect(result.product.stockQuantity).toBe(60);
@@ -89,11 +94,14 @@ describe('InventoryService', () => {
         stockQuantity: 45,
       };
 
-      prisma.product.findUniqueOrThrow.mockResolvedValue({
-        id: productId,
-        name: 'Test Product',
-        stockQuantity: 50,
-      });
+      const mockClient = {
+        product: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: productId, name: 'Test Product', stockQuantity: 50 }),
+        },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
       prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         const tx = {
@@ -107,18 +115,21 @@ describe('InventoryService', () => {
         return await callback(tx);
       });
 
-      const result = await service.adjustStock(productId, userId, 5, TransactionType.OUT);
+      const result = await service.adjustStock(productId, userId, tenantId, 5, TransactionType.OUT);
 
       expect(result.transaction).toEqual(mockTransaction);
       expect(result.product.stockQuantity).toBe(45);
     });
 
     it('should throw BadRequestException when stock goes negative', async () => {
-      prisma.product.findUniqueOrThrow.mockResolvedValue({
-        id: productId,
-        name: 'Test Product',
-        stockQuantity: 3,
-      });
+      const mockClient = {
+        product: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: productId, name: 'Test Product', stockQuantity: 3 }),
+        },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
       prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         const tx = {
@@ -135,9 +146,9 @@ describe('InventoryService', () => {
         return await callback(tx);
       });
 
-      await expect(service.adjustStock(productId, userId, 5, TransactionType.OUT)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.adjustStock(productId, userId, tenantId, 5, TransactionType.OUT),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should handle ADJUSTMENT type with negative quantity', async () => {
@@ -146,10 +157,10 @@ describe('InventoryService', () => {
         stockQuantity: 47,
       };
 
-      prisma.product.findUniqueOrThrow.mockResolvedValue({
-        id: productId,
-        stockQuantity: 50,
-      });
+      const mockClient = {
+        product: { findFirst: jest.fn().mockResolvedValue({ id: productId, stockQuantity: 50 }) },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
       prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         const tx = {
@@ -163,7 +174,13 @@ describe('InventoryService', () => {
         return await callback(tx);
       });
 
-      const result = await service.adjustStock(productId, userId, -3, TransactionType.ADJUSTMENT);
+      const result = await service.adjustStock(
+        productId,
+        userId,
+        tenantId,
+        -3,
+        TransactionType.ADJUSTMENT,
+      );
 
       expect(result.product.stockQuantity).toBe(47);
     });
@@ -176,46 +193,61 @@ describe('InventoryService', () => {
         name: 'Test Product',
       };
 
-      prisma.product.findUniqueOrThrow.mockResolvedValue(mockProduct);
+      const mockClient = {
+        product: { findFirst: jest.fn().mockResolvedValue(mockProduct) },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
-      const result = await service.checkStockAvailability('product-1', 10);
+      const result = await service.checkStockAvailability('product-1', 10, 'tenant-uuid-1');
       expect(result.stockQuantity).toBe(50);
     });
 
     it('should throw BadRequestException when stock is insufficient', async () => {
-      prisma.product.findUniqueOrThrow.mockResolvedValue({
-        stockQuantity: 3,
-        name: 'Test Product',
-      });
+      const mockClient = {
+        product: {
+          findFirst: jest.fn().mockResolvedValue({ stockQuantity: 3, name: 'Test Product' }),
+        },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
-      await expect(service.checkStockAvailability('product-1', 10)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.checkStockAvailability('product-1', 10, 'tenant-uuid-1'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('checkReorderLevel', () => {
     it('should return isBelowReorderLevel=true when stock <= reorderLevel', async () => {
-      prisma.product.findUniqueOrThrow.mockResolvedValue({
-        stockQuantity: 5,
-        reorderLevel: 10,
-        name: 'Test Product',
-        sku: 'SKU-001',
-      });
+      const mockClient = {
+        product: {
+          findFirst: jest.fn().mockResolvedValue({
+            stockQuantity: 5,
+            reorderLevel: 10,
+            name: 'Test Product',
+            sku: 'SKU-001',
+          }),
+        },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
-      const result = await service.checkReorderLevel('product-1');
+      const result = await service.checkReorderLevel('product-1', 'tenant-uuid-1');
       expect(result.isBelowReorderLevel).toBe(true);
     });
 
     it('should return isBelowReorderLevel=false when stock > reorderLevel', async () => {
-      prisma.product.findUniqueOrThrow.mockResolvedValue({
-        stockQuantity: 50,
-        reorderLevel: 10,
-        name: 'Test Product',
-        sku: 'SKU-001',
-      });
+      const mockClient = {
+        product: {
+          findFirst: jest.fn().mockResolvedValue({
+            stockQuantity: 50,
+            reorderLevel: 10,
+            name: 'Test Product',
+            sku: 'SKU-001',
+          }),
+        },
+      };
+      prisma.getClient.mockReturnValue(mockClient);
 
-      const result = await service.checkReorderLevel('product-1');
+      const result = await service.checkReorderLevel('product-1', 'tenant-uuid-1');
       expect(result.isBelowReorderLevel).toBe(false);
     });
   });
@@ -235,7 +267,7 @@ describe('InventoryService', () => {
 
       prisma.$queryRaw.mockResolvedValue(mockProducts);
 
-      const result = await service.getLowStockProducts();
+      const result = await service.getLowStockProducts('tenant-uuid-1');
       expect(result).toEqual(mockProducts);
       expect(prisma.$queryRaw).toHaveBeenCalled();
     });

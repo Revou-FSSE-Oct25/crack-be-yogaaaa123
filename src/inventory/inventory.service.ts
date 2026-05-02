@@ -18,18 +18,18 @@ export class InventoryService {
   async adjustStock(
     productId: string,
     userId: string,
+    tenantId: string,
     quantityChange: number,
     type: TransactionType,
     referenceId?: string,
     notes?: string,
   ) {
-    await this.prisma.product.findUniqueOrThrow({
+    const prisma = this.prisma.getClient(tenantId);
+    await prisma.product.findFirst({
       where: { id: productId },
     });
 
     // Determine the operation based on type and quantityChange.
-    // If it's an OUT transaction, we decrement. If IN, we increment.
-    // For ADJUSTMENT, we can use increment with a positive or negative quantityChange.
     let operation: 'increment' | 'decrement' = 'increment';
     const absoluteChange = Math.abs(quantityChange);
 
@@ -43,6 +43,52 @@ export class InventoryService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Atomic stock validation: only decrement if stock is sufficient
+      if (operation === 'decrement') {
+        const updatedProduct = await tx.product.update({
+          where: {
+            id: productId,
+            stockQuantity: { gte: absoluteChange },
+          },
+          data: {
+            stockQuantity: {
+              decrement: absoluteChange,
+            },
+          },
+        });
+
+        if (!updatedProduct) {
+          throw new BadRequestException(
+            `Insufficient stock for product ID ${productId}. Cannot decrement by ${absoluteChange}.`,
+          );
+        }
+
+        // Create stock transaction
+        const transaction = await tx.stockTransaction.create({
+          data: {
+            type,
+            quantity: absoluteChange,
+            referenceId,
+            notes,
+            productId,
+            userId,
+            tenantId,
+          },
+        });
+
+        return { transaction, product: updatedProduct };
+      }
+
+      // For increment operations, just update directly
+      const updatedProduct = await tx.product.update({
+        where: { id: productId },
+        data: {
+          stockQuantity: {
+            increment: absoluteChange,
+          },
+        },
+      });
+
       // Create stock transaction
       const transaction = await tx.stockTransaction.create({
         data: {
@@ -52,34 +98,24 @@ export class InventoryService {
           notes,
           productId,
           userId,
+          tenantId,
         },
       });
-
-      // Update product stock quantity
-      const updatedProduct = await tx.product.update({
-        where: { id: productId },
-        data: {
-          stockQuantity: {
-            [operation]: absoluteChange,
-          },
-        },
-      });
-
-      if (updatedProduct.stockQuantity < 0) {
-        throw new BadRequestException(
-          `Insufficient stock for product ID ${productId}. Stock cannot be negative.`,
-        );
-      }
 
       return { transaction, product: updatedProduct };
     });
   }
 
-  async checkStockAvailability(productId: string, requestedQuantity: number) {
-    const product = await this.prisma.product.findUniqueOrThrow({
+  async checkStockAvailability(productId: string, requestedQuantity: number, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const product = await prisma.product.findFirst({
       where: { id: productId },
       select: { stockQuantity: true, name: true },
     });
+
+    if (!product) {
+      throw new BadRequestException(`Product ${productId} not found`);
+    }
 
     if (product.stockQuantity < requestedQuantity) {
       throw new BadRequestException(
@@ -90,8 +126,9 @@ export class InventoryService {
     return product;
   }
 
-  async checkReorderLevel(productId: string) {
-    const product = await this.prisma.product.findUniqueOrThrow({
+  async checkReorderLevel(productId: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const product = await prisma.product.findFirst({
       where: { id: productId },
       select: {
         stockQuantity: true,
@@ -100,6 +137,10 @@ export class InventoryService {
         sku: true,
       },
     });
+
+    if (!product) {
+      throw new BadRequestException(`Product ${productId} not found`);
+    }
 
     return {
       ...product,
@@ -111,7 +152,7 @@ export class InventoryService {
    * Get all products where stockQuantity <= reorderLevel.
    * Uses raw SQL because Prisma ORM doesn't support column-to-column comparison.
    */
-  async getLowStockProducts(): Promise<LowStockProduct[]> {
+  async getLowStockProducts(tenantId: string): Promise<LowStockProduct[]> {
     return this.prisma.$queryRaw<LowStockProduct[]>(
       Prisma.sql`
         SELECT
@@ -125,6 +166,7 @@ export class InventoryService {
         LEFT JOIN suppliers s ON p."supplierId" = s.id
         WHERE p."stockQuantity" <= p."reorderLevel"
           AND p."deletedAt" IS NULL
+          AND p."tenantId" = ${tenantId}
         ORDER BY p."stockQuantity" ASC
       `,
     );

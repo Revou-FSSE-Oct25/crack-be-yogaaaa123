@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { WinstonModule } from 'nest-winston';
 import { PrismaModule } from './prisma.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -16,20 +17,30 @@ import { ActivityLogModule } from './activity-log/activity-log.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { UploadModule } from './upload/upload.module';
+import { AiModule } from './ai/ai.module';
+import { AiDataModule } from './ai-data/ai-data.module';
+import { AdminModule } from './admin/admin.module';
+import { PrismaService } from './prisma.service';
+import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
+import { TenantThrottlerGuard } from './common/guards/tenant-throttler.guard';
+import { createWinstonLoggerOptions } from './logger.config';
 
 @Module({
   imports: [
-    // Rate Limiting — 60 requests per 60 detik (global default)
+    // Winston — Structured Logging (JSON in prod, colorful in dev)
+    WinstonModule.forRoot(createWinstonLoggerOptions()),
+
+    // Rate Limiting — 60 requests per 60 seconds (global default)
     ThrottlerModule.forRoot([
       {
         name: 'global',
-        ttl: 60000, // 60 detik
-        limit: 60, // maks 60 request per window
+        ttl: 60000, // 60 seconds
+        limit: 60, // max 60 requests per window
       },
       {
         name: 'auth',
-        ttl: 60000, // 60 detik
-        limit: 10, // maks 10 request per window (untuk endpoint auth)
+        ttl: 60000, // 60 seconds
+        limit: 10, // max 10 requests per window (for auth endpoints)
       },
     ]),
     PrismaModule,
@@ -47,13 +58,22 @@ import { UploadModule } from './upload/upload.module';
     DashboardModule,
     ReportsModule,
     UploadModule,
+    AiModule,
+    AiDataModule,
+    AdminModule,
   ],
   controllers: [],
   providers: [
-    // Aktifkan ThrottlerGuard secara global
+    PrismaService,
+    // Multi-tenant Rate Limiting — throttles per tenantId instead of per IP
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: TenantThrottlerGuard,
+    },
+    // Global Audit Log Interceptor — automatically logs all mutations
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditLogInterceptor,
     },
   ],
 })

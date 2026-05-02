@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -7,46 +7,57 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 export class CategoriesService {
   constructor(private prisma: PrismaService) {}
 
-  create(createCategoryDto: CreateCategoryDto) {
+  create(createCategoryDto: CreateCategoryDto, tenantId: string) {
     return this.prisma.category.create({
-      data: createCategoryDto,
+      data: {
+        ...createCategoryDto,
+        tenantId,
+      },
     });
   }
 
-  async findAll(skip?: number, take?: number) {
-    const where = { deletedAt: null };
+  async findAll(tenantId: string, skip?: number, take?: number) {
+    const prisma = this.prisma.getClient(tenantId);
+    const where = {};
 
     const [data, total] = await Promise.all([
-      this.prisma.category.findMany({
+      prisma.category.findMany({
         where,
         skip,
         take: take ?? 50,
         orderBy: { name: 'asc' },
       }),
-      this.prisma.category.count({ where }),
+      prisma.category.count({ where }),
     ]);
 
     return { data, total };
   }
 
-  async findOne(id: string) {
-    return this.prisma.category.findUniqueOrThrow({
-      where: { id, deletedAt: null },
+  async findOne(id: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const category = await prisma.category.findFirst({
+      where: { id },
     });
+    if (!category) {
+      throw new NotFoundException(`Category ${id} not found`);
+    }
+    return category;
   }
 
-  async update(id: string, updateCategoryDto: UpdateCategoryDto) {
-    await this.findOne(id); // Check existence
-    return this.prisma.category.update({
+  async update(id: string, updateCategoryDto: UpdateCategoryDto, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    await this.findOne(id, tenantId);
+    return prisma.category.update({
       where: { id },
       data: updateCategoryDto,
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    await this.findOne(id, tenantId);
     // Soft delete
-    return this.prisma.category.update({
+    return prisma.category.update({
       where: { id },
       data: { deletedAt: new Date() },
     });

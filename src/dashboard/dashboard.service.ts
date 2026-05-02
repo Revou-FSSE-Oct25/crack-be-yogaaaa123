@@ -6,7 +6,8 @@ import { Prisma } from '@prisma/client';
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
-  async getSummary() {
+  async getSummary(tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -22,34 +23,43 @@ export class DashboardService {
       totalSalesAmount,
       lowStockProducts,
     ] = await Promise.all([
-      this.prisma.product.count({ where: { deletedAt: null } }),
-      this.prisma.product.count({ where: { deletedAt: null, stockQuantity: { gt: 0 } } }),
-      this.prisma.supplier.count({ where: { deletedAt: null } }),
-      this.prisma.category.count({ where: { deletedAt: null } }),
+      prisma.product.count(),
+      prisma.product.count({ where: { stockQuantity: { gt: 0 } } }),
+      prisma.supplier.count(),
+      prisma.category.count(),
       // Today's sales
-      this.prisma.salesOrder.aggregate({
+      prisma.salesOrder.aggregate({
         _sum: { totalPrice: true, totalProfit: true },
-        where: { createdAt: { gte: startOfToday }, deletedAt: null },
+        where: { createdAt: { gte: startOfToday } },
       }),
       // This month's sales
-      this.prisma.salesOrder.aggregate({
+      prisma.salesOrder.aggregate({
         _sum: { totalPrice: true, totalProfit: true },
-        where: { createdAt: { gte: startOfMonth }, deletedAt: null },
+        where: { createdAt: { gte: startOfMonth } },
       }),
       // All time total sales revenue
-      this.prisma.salesOrder.aggregate({
+      prisma.salesOrder.aggregate({
         _sum: { totalPrice: true },
-        where: { deletedAt: null },
       }),
-      // Low stock products
-      this.prisma.product.findMany({
-        where: {
-          deletedAt: null,
-          stockQuantity: { lte: this.prisma.product.fields.reorderLevel },
-        },
-        select: { id: true, name: true, sku: true, stockQuantity: true, reorderLevel: true },
-        orderBy: { stockQuantity: 'asc' },
-      }),
+      // Low stock products — use raw query because Prisma ORM doesn't support column-to-column comparison
+      prisma.$queryRaw<
+        Array<{
+          id: string;
+          name: string;
+          sku: string;
+          stockQuantity: number;
+          reorderLevel: number;
+        }>
+      >(
+        Prisma.sql`
+          SELECT id, name, sku, "stockQuantity", "reorderLevel"
+          FROM products
+          WHERE "tenantId" = ${tenantId}
+            AND "stockQuantity" <= "reorderLevel"
+            AND "deletedAt" IS NULL
+          ORDER BY "stockQuantity" ASC
+        `,
+      ),
     ]);
 
     return {
@@ -70,38 +80,76 @@ export class DashboardService {
     };
   }
 
-  async getTopProducts(limit = 10) {
+  async getTopProducts(tenantId: string, limit = 10) {
+    const prisma = this.prisma.getClient(tenantId);
     // Get top-selling products by total quantity sold from COMPLETED orders
-    return this.prisma.orderItem.groupBy({
+    return prisma.orderItem.groupBy({
       by: ['productId'],
       _sum: { quantity: true },
       orderBy: { _sum: { quantity: 'desc' } },
       take: limit,
       where: {
-        order: { status: 'COMPLETED', deletedAt: null },
+        order: { status: 'COMPLETED' },
       },
     });
   }
 
-  async getSalesTrend(days = 30) {
+  /**
+   * Get sales trend over the last N days, grouped by day.
+   *
+   * BUG FIX (getSalesTrend):
+   * Previously used Prisma's groupBy on 'createdAt', which groups by the FULL
+   * timestamp (including hours/minutes/seconds). This meant every order got its
+   * own group since timestamps are unique. The result was a flat list of orders
+   * instead of daily aggregates.
+   *
+   * Now uses $queryRaw with PostgreSQL's DATE_TRUNC to group by day:
+   *   SELECT DATE_TRUNC('day', "createdAt") AS date, ...
+   *   GROUP BY DATE_TRUNC('day', "createdAt")
+   *   ORDER BY date ASC
+   *
+   * This correctly aggregates revenue/profit per day.
+   */
+  async getSalesTrend(tenantId: string, days = 30) {
+    const prisma = this.prisma.getClient(tenantId);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    return this.prisma.salesOrder.groupBy({
-      by: ['createdAt'],
-      _sum: { totalPrice: true, totalProfit: true },
-      where: {
-        createdAt: { gte: startDate },
-        deletedAt: null,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Use raw SQL with DATE_TRUNC to properly group sales by day
+    // PostgreSQL's DATE_TRUNC('day', timestamp) rounds down to midnight
+    const result = await prisma.$queryRaw<
+      Array<{
+        date: Date;
+        revenue: Prisma.Decimal;
+        profit: Prisma.Decimal;
+        order_count: bigint;
+      }>
+    >`
+      SELECT
+        DATE_TRUNC('day', "createdAt") AS date,
+        COALESCE(SUM("totalPrice"), 0) AS revenue,
+        COALESCE(SUM("totalProfit"), 0) AS profit,
+        COUNT(*)::bigint AS order_count
+      FROM sales_orders
+      WHERE "tenantId" = ${tenantId}
+        AND "createdAt" >= ${startDate}
+        AND "deletedAt" IS NULL
+      GROUP BY DATE_TRUNC('day', "createdAt")
+      ORDER BY date ASC
+    `;
+
+    return result.map((row) => ({
+      date: row.date,
+      revenue: row.revenue,
+      profit: row.profit,
+      order_count: Number(row.order_count),
+    }));
   }
 
-  async getInventoryValue() {
-    const result = await this.prisma.product.aggregate({
+  async getInventoryValue(tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const result = await prisma.product.aggregate({
       _sum: { stockQuantity: true },
-      where: { deletedAt: null },
     });
 
     return {

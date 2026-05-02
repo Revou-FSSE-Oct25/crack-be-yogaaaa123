@@ -22,6 +22,35 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
         });
         break;
       }
+      case 'P2003': {
+        // FOREIGN KEY CONSTRAINT VIOLATION
+        // Contoh: membuat OrderItem dengan productId yang tidak ada di DB,
+        // atau menghapus Category yang masih memiliki Products terkait.
+        const status = HttpStatus.BAD_REQUEST;
+        response.status(status).json({
+          statusCode: status,
+          message:
+            'Referenced record not found (Foreign Key Constraint Violation). ' +
+            'Check that the related record exists before performing this action.',
+          error: 'Bad Request',
+          prismaCode: 'P2003',
+        });
+        break;
+      }
+      case 'P2011': {
+        // NULL CONSTRAINT VIOLATION
+        // Contoh: membuat record tanpa field required (yang tidak punya default).
+        const status = HttpStatus.BAD_REQUEST;
+        response.status(status).json({
+          statusCode: status,
+          message:
+            'A required field is missing (Null Constraint Violation). ' +
+            'Ensure all required fields are provided.',
+          error: 'Bad Request',
+          prismaCode: 'P2011',
+        });
+        break;
+      }
       case 'P2025': {
         const status = HttpStatus.NOT_FOUND;
         response.status(status).json({

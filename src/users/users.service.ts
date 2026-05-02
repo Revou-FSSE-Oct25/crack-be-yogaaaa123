@@ -1,4 +1,10 @@
-import { Injectable, ConflictException, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  Logger,
+  UnauthorizedException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -11,26 +17,26 @@ export class UsersService {
 
   constructor(private prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto) {
-    const existingUser = await this.prisma.user.findFirst({
+  async create(createUserDto: CreateUserDto, tenantId: string) {
+    const existingUser = await this.prisma.tenantUser.findFirst({
       where: {
-        OR: [{ email: createUserDto.email }, { username: createUserDto.username }],
+        OR: [{ username: createUserDto.username }],
       },
     });
 
     if (existingUser) {
-      throw new ConflictException('User with this email or username already exists');
+      throw new ConflictException('User with this username already exists');
     }
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(createUserDto.password, salt);
 
-    const user = await this.prisma.user.create({
+    const user = await this.prisma.tenantUser.create({
       data: {
         username: createUserDto.username,
-        email: createUserDto.email,
         passwordHash,
         role: createUserDto.role || 'STAFF',
+        tenantId,
       },
     });
 
@@ -39,17 +45,14 @@ export class UsersService {
     return result;
   }
 
-  async findAll(skip?: number, take?: number) {
-    return this.prisma.user.findMany({
+  async findAll(tenantId: string, skip?: number, take?: number) {
+    const prisma = this.prisma.getClient(tenantId);
+    return prisma.tenantUser.findMany({
       select: {
         id: true,
         username: true,
-        email: true,
         role: true,
         createdAt: true,
-      },
-      where: {
-        deletedAt: null,
       },
       skip,
       take: take ?? 50,
@@ -57,63 +60,76 @@ export class UsersService {
     });
   }
 
-  async findOne(id: string) {
-    return this.prisma.user.findUniqueOrThrow({
-      where: { id, deletedAt: null },
+  async findOne(id: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const user = await prisma.tenantUser.findFirst({
+      where: { id },
     });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+    return user;
   }
 
-  async findByUsername(username: string) {
+  async findByUsername(username: string, tenantId?: string) {
     // SECURITY: filter soft-deleted users — they must not be able to login
-    return this.prisma.user.findUnique({
-      where: { username, deletedAt: null },
+    return this.prisma.tenantUser.findFirst({
+      where: { username, deletedAt: null, ...(tenantId ? { tenantId } : {}) },
     });
   }
 
   async findByUsernameOrEmail(usernameOrEmail: string) {
     // SECURITY: filter soft-deleted users — they must not be able to login
-    return this.prisma.user.findFirst({
+    return this.prisma.tenantUser.findFirst({
       where: {
-        OR: [
-          { username: usernameOrEmail, deletedAt: null },
-          { email: usernameOrEmail, deletedAt: null },
-        ],
+        username: usernameOrEmail,
+        deletedAt: null,
       },
     });
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
+  async update(id: string, updateUserDto: UpdateUserDto, tenantId: string) {
     // Verify user exists and is not soft-deleted
-    await this.findOne(id);
+    const prisma = this.prisma.getClient(tenantId);
+    const user = await prisma.tenantUser.findFirst({
+      where: { id },
+    });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
 
     // Explicit field mapping — never pass raw DTO to prevent accidental exposure of sensitive fields
-    const updateData: { email?: string; role?: UpdateUserDto['role'] } = {};
-    if (updateUserDto.email !== undefined) updateData.email = updateUserDto.email;
+    const updateData: { role?: UpdateUserDto['role'] } = {};
     if (updateUserDto.role !== undefined) updateData.role = updateUserDto.role;
 
-    const user = await this.prisma.user.update({
+    const updatedUser = await this.prisma.tenantUser.update({
       where: { id },
       data: updateData,
     });
 
     this.logger.log(`User ${id} updated`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { passwordHash: _, ...result } = user;
+    const { passwordHash: _, ...result } = updatedUser;
     return result;
   }
 
-  async remove(id: string) {
+  async remove(id: string, tenantId: string) {
     // Verify user exists and is not already soft-deleted
-    await this.findOne(id);
+    const prisma = this.prisma.getClient(tenantId);
+    const user = await prisma.tenantUser.findFirst({
+      where: { id },
+    });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
 
     // Soft delete
-    return this.prisma.user.update({
+    return this.prisma.tenantUser.update({
       where: { id },
       data: { deletedAt: new Date() },
       select: {
         id: true,
         username: true,
-        email: true,
         role: true,
         deletedAt: true,
       },
@@ -122,9 +138,13 @@ export class UsersService {
 
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
     // Fetch full user record (including passwordHash) for verification
-    const user = await this.prisma.user.findUniqueOrThrow({
+    const user = await this.prisma.tenantUser.findFirst({
       where: { id: userId, deletedAt: null },
     });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
 
     const isCurrentPasswordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!isCurrentPasswordValid) {
@@ -134,7 +154,7 @@ export class UsersService {
     const salt = await bcrypt.genSalt(10);
     const newPasswordHash = await bcrypt.hash(dto.newPassword, salt);
 
-    await this.prisma.user.update({
+    await this.prisma.tenantUser.update({
       where: { id: userId },
       data: { passwordHash: newPasswordHash },
     });

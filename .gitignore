@@ -56,3 +56,13 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# backup files
+*.bak
+*.orig
+
+# crack-ai Python service
+/crack-ai/.venv
+/crack-ai/__pycache__
+/crack-ai/**/__pycache__
+/crack-ai/**/*.pyc

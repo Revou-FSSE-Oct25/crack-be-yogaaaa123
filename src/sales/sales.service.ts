@@ -6,6 +6,7 @@ import type { CreateSalesOrderDto as CreateSalesOrderDtoBase } from './dto/creat
 // Extend DTO with server-side userId (injected by controller from JWT)
 interface CreateSalesOrderData extends CreateSalesOrderDtoBase {
   userId: string;
+  tenantId: string;
 }
 
 // Alias for use in internal helpers
@@ -20,11 +21,11 @@ interface OrderItemData {
   productId: string;
   quantity: number;
   unitPrice: Prisma.Decimal;
-  cogs: Prisma.Decimal; // total COGS untuk item ini (unitCost * quantity)
-  profitMargin: Prisma.Decimal; // total profit untuk item ini ((unitPrice - unitCost) * quantity)
+  cogs: Prisma.Decimal; // total COGS for this item (unitCost * quantity)
+  profitMargin: Prisma.Decimal; // total profit for this item ((unitPrice - unitCost) * quantity)
 }
 
-// Aggregated result dari buildOrderItemsData
+// Aggregated result from buildOrderItemsData
 interface OrderItemsBuildResult {
   orderItemsToCreate: OrderItemData[];
   totalCogs: Prisma.Decimal;
@@ -39,8 +40,8 @@ export class SalesService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Private helper: hitung COGS, profit, dan siapkan data order items.
-   * Di-extract untuk menghilangkan duplikasi antara createSalesOrder & createPendingSalesOrder.
+   * Private helper: calculate COGS, profit, and prepare order items data.
+   * Extracted to eliminate duplication between createSalesOrder & createPendingSalesOrder.
    */
   private async buildOrderItemsData(
     items: SalesOrderItem[],
@@ -67,9 +68,9 @@ export class SalesService {
       const itemUnitPrice = new Prisma.Decimal(item.unitPrice);
 
       // Decimal arithmetic — no floating-point error
-      // cogs = unitCost * quantity (TOTAL cost untuk seluruh quantity item ini)
+      // cogs = unitCost * quantity (TOTAL cost for all quantity of this item)
       const itemCogs = unitCost.mul(item.quantity);
-      // profitMargin = (unitPrice - unitCost) * quantity (TOTAL profit item ini)
+      // profitMargin = (unitPrice - unitCost) * quantity (TOTAL profit for this item)
       const itemProfitMargin = itemUnitPrice.sub(unitCost).mul(item.quantity);
 
       totalCogs = totalCogs.add(itemCogs);
@@ -89,30 +90,34 @@ export class SalesService {
   }
 
   /**
-   * Private helper: decrement stok dan buat StockTransaction OUT untuk setiap item.
-   * Menggunakan pessimistic check di dalam transaksi untuk race condition safety.
+   * Private helper: decrement stock and create StockTransaction OUT for each item.
+   * Uses pessimistic check within the transaction for race condition safety.
    */
   private async processStockOut(
     items: { productId: string; quantity: number }[],
     orderNumber: string,
     userId: string,
+    tenantId: string,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     for (const item of items) {
+      // Atomic stock validation: only decrement if stock is sufficient
       const updatedProduct = await tx.product.update({
-        where: { id: item.productId },
+        where: {
+          id: item.productId,
+          stockQuantity: { gte: item.quantity },
+        },
         data: { stockQuantity: { decrement: item.quantity } },
         select: { stockQuantity: true, reorderLevel: true, name: true },
       });
 
-      // Pessimistic check: Jika stok jadi negatif, rollback transaksi
-      if (updatedProduct.stockQuantity < 0) {
+      if (!updatedProduct) {
         throw new BadRequestException(
-          `Insufficient stock for product ${updatedProduct.name}. Requested: ${item.quantity}`,
+          `Insufficient stock for product ID ${item.productId}. Requested: ${item.quantity}`,
         );
       }
 
-      // Buat OUT stock transaction
+      // Create OUT stock transaction
       await tx.stockTransaction.create({
         data: {
           type: TransactionType.OUT,
@@ -121,10 +126,11 @@ export class SalesService {
           notes: 'Sales Order Completed',
           productId: item.productId,
           userId,
+          tenantId,
         },
       });
 
-      // Log warning HANYA JIKA stok baru saja melewati batas reorder level
+      // Log warning ONLY if stock just dropped below reorder level
       const previousStock = updatedProduct.stockQuantity + item.quantity;
       const isJustBelowReorderLevel =
         previousStock > updatedProduct.reorderLevel &&
@@ -140,8 +146,8 @@ export class SalesService {
 
   async createSalesOrder(data: CreateSalesOrderData) {
     return this.prisma.$transaction(async (tx) => {
-      // Build order items data (COGS, profit, price) — pre-check stok ditiadakan,
-      // pessimistic check di processStockOut sudah cukup dan lebih atomic
+      // Build order items data (COGS, profit, price) — pre-check stock omitted,
+      // pessimistic check in processStockOut is sufficient and more atomic
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
         await this.buildOrderItemsData(data.items, tx);
 
@@ -154,12 +160,19 @@ export class SalesService {
           totalCogs,
           totalProfit,
           userId: data.userId,
+          tenantId: data.tenantId,
           items: { create: orderItemsToCreate },
         },
       });
 
-      // Decrement stok dan buat stock transactions
-      await this.processStockOut(data.items, salesOrder.orderNumber, data.userId, tx);
+      // Decrement stock and create stock transactions
+      await this.processStockOut(
+        data.items,
+        salesOrder.orderNumber,
+        data.userId,
+        data.tenantId,
+        tx,
+      );
 
       return salesOrder;
     });
@@ -167,7 +180,7 @@ export class SalesService {
 
   async createPendingSalesOrder(data: CreateSalesOrderData) {
     return this.prisma.$transaction(async (tx) => {
-      // Build order items data — tidak proses stok karena status PENDING
+      // Build order items data — no stock processing since status is PENDING
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
         await this.buildOrderItemsData(data.items, tx);
 
@@ -180,16 +193,16 @@ export class SalesService {
           totalCogs,
           totalProfit,
           userId: data.userId,
+          tenantId: data.tenantId,
           items: { create: orderItemsToCreate },
         },
       });
     });
   }
 
-  async completeSalesOrder(orderId: string, userId: string) {
+  async completeSalesOrder(orderId: string, userId: string, tenantId: string) {
     return this.prisma.$transaction(async (tx) => {
       // Atomic status check + update — prevents race conditions from concurrent requests.
-      // If the order is not in PENDING state, findFirst returns null and we throw.
       const salesOrder = await tx.salesOrder.findFirst({
         where: { id: orderId, status: 'PENDING' },
         include: { items: true },
@@ -197,8 +210,9 @@ export class SalesService {
 
       if (!salesOrder) {
         // Check if it exists at all for a more descriptive error
-        const exists = await tx.salesOrder.findUnique({
+        const exists = await tx.salesOrder.findFirst({
           where: { id: orderId },
+          select: { id: true, status: true },
         });
         if (!exists) {
           throw new BadRequestException(`Sales Order ${orderId} not found`);
@@ -213,39 +227,42 @@ export class SalesService {
         data: { status: 'COMPLETED' },
       });
 
-      // Konversi OrderItem (dari DB) untuk helper stok
+      // Convert OrderItem (from DB) for stock helper
       const itemsForStockOut = salesOrder.items.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
       }));
 
-      await this.processStockOut(itemsForStockOut, updatedOrder.orderNumber, userId, tx);
+      await this.processStockOut(itemsForStockOut, updatedOrder.orderNumber, userId, tenantId, tx);
 
       return updatedOrder;
     });
   }
 
-  async getSalesOrders(options?: {
-    skip?: number;
-    take?: number;
-    customerId?: string;
-    status?: SalesOrderStatus;
-  }) {
+  async getSalesOrders(
+    tenantId: string,
+    options?: {
+      skip?: number;
+      take?: number;
+      customerId?: string;
+      status?: SalesOrderStatus;
+    },
+  ) {
+    const prisma = this.prisma.getClient(tenantId);
     const where = {
       ...(options?.customerId && { customerId: options.customerId }),
       ...(options?.status && { status: options.status }),
     };
 
-    return this.prisma.salesOrder.findMany({
+    return prisma.salesOrder.findMany({
       where,
       skip: options?.skip,
-      take: options?.take ?? 50, // Default limit 50 untuk mencegah query tanpa batas
+      take: options?.take ?? 50, // Default limit 50 to prevent unbounded queries
       orderBy: { createdAt: 'desc' },
       include: {
         user: {
           select: {
             username: true,
-            email: true,
           },
         },
         items: {
@@ -262,14 +279,14 @@ export class SalesService {
     });
   }
 
-  async getSalesOrderById(id: string) {
-    return this.prisma.salesOrder.findUniqueOrThrow({
+  async getSalesOrderById(tenantId: string, id: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const order = await prisma.salesOrder.findFirst({
       where: { id },
       include: {
         user: {
           select: {
             username: true,
-            email: true,
           },
         },
         items: {
@@ -286,26 +303,53 @@ export class SalesService {
         },
       },
     });
+    if (!order) {
+      throw new NotFoundException(`Sales Order ${id} not found`);
+    }
+    return order;
   }
 
   /**
    * Cancel a PENDING sales order.
    * Only PENDING orders can be cancelled — no stock impact.
    */
-  async cancelSalesOrder(orderId: string) {
-    const salesOrder = await this.prisma.salesOrder.findUniqueOrThrow({
-      where: { id: orderId },
+  async cancelSalesOrder(orderId: string, _tenantId: string) {
+    // Atomic check-and-set: only update if status is still PENDING
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updateResult = await tx.salesOrder.updateMany({
+        where: {
+          id: orderId,
+          status: 'PENDING', // ← Atomic condition: only PENDING orders
+        },
+        data: { status: 'CANCELLED' },
+      });
+
+      if (updateResult.count === 0) {
+        // updateMany didn't update anything — check why
+        const exists = await tx.salesOrder.findFirst({
+          where: { id: orderId },
+          select: { id: true, status: true },
+        });
+
+        if (!exists) {
+          throw new NotFoundException(`Sales Order ${orderId} not found`);
+        }
+
+        throw new BadRequestException(
+          `Only PENDING orders can be cancelled. Current status: ${exists.status}`,
+        );
+      }
+
+      // Fetch and return the updated order for the response
+      const updated = await tx.salesOrder.findFirst({
+        where: { id: orderId },
+      });
+      if (!updated) {
+        throw new NotFoundException(`Sales Order ${orderId} not found after cancellation`);
+      }
+      return updated;
     });
 
-    if (salesOrder.status !== 'PENDING') {
-      throw new BadRequestException(
-        `Only PENDING orders can be cancelled. Current status: ${salesOrder.status}`,
-      );
-    }
-
-    return this.prisma.salesOrder.update({
-      where: { id: orderId },
-      data: { status: 'CANCELLED' },
-    });
+    return result;
   }
 }
