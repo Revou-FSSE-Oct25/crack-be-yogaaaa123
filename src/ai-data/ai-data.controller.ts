@@ -366,7 +366,7 @@ export class AiDataController {
       }
       if (endDate) {
         whereSalesReport.createdAt = {
-          ...(whereSalesReport.createdAt as object || {}),
+          ...((whereSalesReport.createdAt as object) || {}),
           lte: new Date(endDate),
         };
       }
@@ -447,7 +447,7 @@ export class AiDataController {
       }
       if (endDate) {
         whereProfitLoss.createdAt = {
-          ...(whereProfitLoss.createdAt as object || {}),
+          ...((whereProfitLoss.createdAt as object) || {}),
           lte: new Date(endDate),
         };
       }

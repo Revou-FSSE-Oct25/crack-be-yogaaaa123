@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsUUID,
   Min,
+  ArrayNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -42,6 +43,7 @@ export class CreateSalesOrderDto {
 
   @ApiProperty({ type: [SalesOrderItemDto] })
   @IsArray()
+  @ArrayNotEmpty({ message: 'items must contain at least 1 item' })
   @ValidateNested({ each: true })
   @Type(() => SalesOrderItemDto)
   items: SalesOrderItemDto[];

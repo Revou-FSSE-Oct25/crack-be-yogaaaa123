@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PurchaseService } from './purchase.service';
 import { PrismaService } from '../prisma.service';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 const mockPrismaService = () => ({
@@ -225,11 +225,13 @@ describe('PurchaseService', () => {
 
     it('should throw BadRequestException when order is already RECEIVED', async () => {
       prisma.getClient.mockReturnValue({
-        purchaseOrder: { findFirst: jest.fn().mockResolvedValue({
-          id: 'po-1',
-          orderNumber: 'PO-1001',
-          status: PurchaseOrderStatus.RECEIVED,
-        }) },
+        purchaseOrder: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'po-1',
+            orderNumber: 'PO-1001',
+            status: PurchaseOrderStatus.RECEIVED,
+          }),
+        },
       });
 
       await expect(service.receivePurchaseOrder('po-1', 'user-1', 'tenant-1')).rejects.toThrow(
@@ -279,7 +281,7 @@ describe('PurchaseService', () => {
       );
     });
 
-    it('should throw BadRequestException when order does not exist', async () => {
+    it('should throw NotFoundException when order does not exist', async () => {
       prisma.$transaction.mockImplementation(async (callback: Function) => {
         const tx = {
           purchaseOrder: {
@@ -291,7 +293,7 @@ describe('PurchaseService', () => {
       });
 
       await expect(service.cancelPurchaseOrder('nonexistent-id', 'user-1')).rejects.toThrow(
-        BadRequestException,
+        NotFoundException,
       );
     });
   });

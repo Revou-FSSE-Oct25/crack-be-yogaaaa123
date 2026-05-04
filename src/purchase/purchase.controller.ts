@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Query, Patch } from '@nestjs/common';
 import { PurchaseService } from './purchase.service';
-import { CreatePurchaseOrderDto, PurchaseOrderItemDto } from './dto/create-purchase-order.dto';
+import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';

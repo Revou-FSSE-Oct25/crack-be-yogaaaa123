@@ -129,7 +129,7 @@ Login khusus untuk Super Admin (developer/pemilik platform).
 
   @Get('tenants')
   @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(ROLES.SUPER_ADMIN)
+  @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Daftar semua tenant (toko) — Super Admin only',
@@ -156,7 +156,7 @@ Mendapatkan daftar semua toko yang terdaftar di platform.
 
   @Get('tenants/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(ROLES.SUPER_ADMIN)
+  @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Detail tenant by ID — Super Admin only',
@@ -177,7 +177,7 @@ Detail satu toko. Hanya menampilkan data platform:
 
   @Delete('tenants/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(ROLES.SUPER_ADMIN)
+  @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Hapus tenant (soft delete) — Super Admin only',
@@ -200,7 +200,7 @@ Soft delete tenant beserta semua data terkait:
 
   @Get('stats')
   @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(ROLES.SUPER_ADMIN)
+  @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Statistik platform — Super Admin only',

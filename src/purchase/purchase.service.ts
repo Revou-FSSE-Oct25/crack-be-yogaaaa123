@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TransactionType, PurchaseOrderStatus, Prisma } from '@prisma/client';
 
@@ -159,7 +159,7 @@ export class PurchaseService {
     });
 
     if (!purchaseOrder) {
-      throw new BadRequestException(`Purchase Order ${orderId} not found`);
+      throw new NotFoundException(`Purchase Order ${orderId} not found`);
     }
 
     if (purchaseOrder.status === PurchaseOrderStatus.RECEIVED) {
@@ -271,7 +271,7 @@ export class PurchaseService {
       },
     });
     if (!order) {
-      throw new BadRequestException(`Purchase Order ${id} not found`);
+      throw new NotFoundException(`Purchase Order ${id} not found`);
     }
     return order;
   }
@@ -342,7 +342,7 @@ export class PurchaseService {
         });
 
         if (!exists) {
-          throw new BadRequestException(`Purchase Order ${orderId} not found`);
+          throw new NotFoundException(`Purchase Order ${orderId} not found`);
         }
 
         throw new BadRequestException(
@@ -354,7 +354,7 @@ export class PurchaseService {
         where: { id: orderId },
       });
       if (!updated) {
-        throw new BadRequestException(`Purchase Order ${orderId} not found after cancellation`);
+        throw new NotFoundException(`Purchase Order ${orderId} not found after cancellation`);
       }
       return updated;
     });

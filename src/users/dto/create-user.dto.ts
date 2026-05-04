@@ -1,4 +1,4 @@
-import { IsString, IsEnum, MinLength, IsOptional } from 'class-validator';
+import { IsString, IsEnum, MinLength, IsOptional, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TenantRole } from '@prisma/client';
 
@@ -25,7 +25,7 @@ export class CreateUserDto {
   @IsOptional()
   role?: TenantRole;
 
-  @ApiProperty({ description: 'Tenant ID' })
-  @IsString()
+  @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174000', description: 'Tenant ID' })
+  @IsUUID()
   tenantId: string;
 }

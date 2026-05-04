@@ -81,53 +81,56 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
-        next: async (responseBody) => {
-          try {
-            // Fetch before-state AFTER handler runs (entity still exists for PATCH/PUT,
-            // but we query via Prisma findFirst to get the CURRENT post-update state)
-            if (needsSnapshot) {
-              beforeState = await this.captureBeforeState(entity, entityId!);
-            }
-
-            const metadata: Record<string, unknown> = {};
-
-            if (beforeState) {
-              metadata.before = this.sanitizeSnapshot(beforeState);
-            }
-
-            if (request.body && Object.keys(request.body).length > 0) {
-              const safeBody = { ...request.body };
-              delete safeBody.password;
-              delete safeBody.passwordHash;
-              delete safeBody.currentPassword;
-              delete safeBody.newPassword;
-              delete safeBody.token;
-              delete safeBody.refreshToken;
-              if (Object.keys(safeBody).length > 0) {
-                metadata.after = safeBody;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        next: (responseBody) => {
+          (async () => {
+            try {
+              if (needsSnapshot) {
+                beforeState = await this.captureBeforeState(entity, entityId);
               }
-            }
 
-            if (!tenantId) {
-              this.logger.warn(
-                `Skipping audit log: no tenantId for action=${action} entity=${entity}`,
-              );
-              return;
-            }
+              const metadata: Record<string, unknown> = {};
 
-            await this.prisma.activityLog.create({
-              data: {
-                userId,
-                action,
-                entity,
-                entityId,
-                tenantId,
-                metadata: metadata as Prisma.InputJsonValue,
-              },
-            });
-          } catch (err) {
-            this.logger.error(`Failed to log audit activity: ${err.message}`, err.stack);
-          }
+              if (beforeState) {
+                metadata.before = this.sanitizeSnapshot(beforeState);
+              }
+
+              if (request.body && Object.keys(request.body).length > 0) {
+                const safeBody = { ...request.body };
+                delete safeBody.password;
+                delete safeBody.passwordHash;
+                delete safeBody.currentPassword;
+                delete safeBody.newPassword;
+                delete safeBody.token;
+                delete safeBody.refreshToken;
+                if (Object.keys(safeBody).length > 0) {
+                  metadata.after = safeBody;
+                }
+              }
+
+              if (!tenantId) {
+                this.logger.warn(
+                  `Skipping audit log: no tenantId for action=${action} entity=${entity}`,
+                );
+                return;
+              }
+
+              await this.prisma.activityLog.create({
+                data: {
+                  userId,
+                  action,
+                  entity,
+                  entityId,
+                  tenantId,
+                  metadata: metadata as Prisma.InputJsonValue,
+                },
+              });
+            } catch (err) {
+              this.logger.error(`Failed to log audit activity: ${err.message}`, err.stack);
+            }
+          })().catch(() => {
+            /* Prevent unhandled rejection from propagating to RxJS */
+          });
         },
         error: () => {},
       }),
@@ -161,9 +164,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     return record as Record<string, unknown> | null;
   }
 
-  private sanitizeSnapshot(
-    record: Record<string, unknown>,
-  ): Record<string, unknown> {
+  private sanitizeSnapshot(record: Record<string, unknown>): Record<string, unknown> {
     if (!record) return {};
     const safe = { ...record };
     delete safe.passwordHash;

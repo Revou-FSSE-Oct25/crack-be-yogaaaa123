@@ -106,9 +106,10 @@ export class AiService {
       );
 
       if (axiosError.response) {
-        const statusCode = axiosError.response.status;
+        const statusCode: number = axiosError.response.status;
         const errorData = axiosError.response.data;
 
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison -- HTTP status codes are HttpStatus enum values
         if (statusCode === HttpStatus.UNAUTHORIZED) {
           throw new HttpException(
             {

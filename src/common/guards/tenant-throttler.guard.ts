@@ -54,6 +54,6 @@ export class TenantThrottlerGuard extends ThrottlerGuard {
     }
 
     // Fallback to IP-based throttling for unauthenticated requests
-    return `ip:${req.ip}`;
+    return `ip:${req.ip as string}`;
   }
 }

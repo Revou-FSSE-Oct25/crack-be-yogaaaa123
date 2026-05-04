@@ -17,8 +17,6 @@ import { RegisterDto } from './dto/register.dto';
 const MAX_FAILED_ATTEMPTS = 5;
 /** Durasi penguncian akun dalam menit setelah melebihi batas */
 const LOCK_DURATION_MINUTES = 30;
-/** Window waktu (menit) untuk reset counter percobaan gagal */
-const FAILED_ATTEMPT_WINDOW_MINUTES = 15;
 
 @Injectable()
 export class AuthService {
@@ -41,9 +39,7 @@ export class AuthService {
 
     // ── BRUTE FORCE CHECK ──────────────────────────────────────────
     if (this.isAccountLocked(user.lockedUntil)) {
-      const remainingMinutes = Math.ceil(
-        (user.lockedUntil!.getTime() - Date.now()) / 60000,
-      );
+      const remainingMinutes = Math.ceil((user.lockedUntil!.getTime() - Date.now()) / 60000);
       this.logger.warn(
         `Login blocked: user ${user.username} is locked for ${remainingMinutes} more minutes`,
       );
@@ -82,10 +78,7 @@ export class AuthService {
 
     // Generate refresh token — SIMPAN HASH, KEMBALIKAN RAW
     const rawRefreshToken = crypto.randomBytes(40).toString('hex');
-    const hashedRefreshToken = crypto
-      .createHash('sha256')
-      .update(rawRefreshToken)
-      .digest('hex');
+    const hashedRefreshToken = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
     const refreshExpiresAt = new Date();
     refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
 
@@ -265,10 +258,7 @@ export class AuthService {
     });
 
     const rawRefreshToken = crypto.randomBytes(40).toString('hex');
-    const hashedRefreshToken = crypto
-      .createHash('sha256')
-      .update(rawRefreshToken)
-      .digest('hex');
+    const hashedRefreshToken = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
     const refreshExpiresAt = new Date();
     refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
 

@@ -37,8 +37,6 @@ const TENANT_SOFT_DELETE_MODELS = [
   'PurchaseOrder',
   'TenantUser',
   'ActivityLog',
-  'StockTransaction',
-  'SalesReturn',
 ] as const;
 
 // Models that only have `deletedAt` (no tenantId — platform-level)
@@ -49,21 +47,33 @@ const SOFT_DELETE_ONLY_MODELS = [
   'TenantMember',
 ] as const;
 
-type ModelNames =
-  | (typeof TENANT_SOFT_DELETE_MODELS)[number]
-  | (typeof SOFT_DELETE_ONLY_MODELS)[number];
+// Models that have `tenantId` but NO `deletedAt` field
+const TENANT_ONLY_MODELS = [
+  'SalesReturn',
+  'StockTransaction',
+] as const;
+
+type TenantSoftDeleteModel = (typeof TENANT_SOFT_DELETE_MODELS)[number];
+type SoftDeleteOnlyModel = (typeof SOFT_DELETE_ONLY_MODELS)[number];
+type TenantOnlyModel = (typeof TENANT_ONLY_MODELS)[number];
+
+type ModelNames = TenantSoftDeleteModel | SoftDeleteOnlyModel | TenantOnlyModel;
 
 function isTenantSoftDeleteModel(
   model: string,
-): model is (typeof TENANT_SOFT_DELETE_MODELS)[number] {
+): model is TenantSoftDeleteModel {
   return (TENANT_SOFT_DELETE_MODELS as readonly string[]).includes(model);
 }
 
-function isSoftDeleteModel(model: string): model is ModelNames {
+function isSoftDeleteModel(model: string): model is TenantSoftDeleteModel | SoftDeleteOnlyModel {
   return (
     (TENANT_SOFT_DELETE_MODELS as readonly string[]).includes(model) ||
     (SOFT_DELETE_ONLY_MODELS as readonly string[]).includes(model)
   );
+}
+
+function isTenantOnlyModel(model: string): model is TenantOnlyModel {
+  return (TENANT_ONLY_MODELS as readonly string[]).includes(model);
 }
 
 /**
@@ -80,21 +90,13 @@ export function createTenantSoftDeleteExtension(tenantId?: string) {
       $allModels: {
         // ── READ OPERATIONS ──────────────────────────────────────────
         async findMany({ model, args, query }) {
-          if (isSoftDeleteModel(model)) {
-            args.where = addSoftDeleteFilter(args.where);
-            if (isTenantSoftDeleteModel(model) && tenantId) {
-              args.where = addTenantFilter(args.where, tenantId);
-            }
-          }
+          applySoftDelete(model, args);
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
         async findFirst({ model, args, query }) {
-          if (isSoftDeleteModel(model)) {
-            args.where = addSoftDeleteFilter(args.where);
-            if (isTenantSoftDeleteModel(model) && tenantId) {
-              args.where = addTenantFilter(args.where, tenantId);
-            }
-          }
+          applySoftDelete(model, args);
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
         /**
@@ -114,50 +116,32 @@ export function createTenantSoftDeleteExtension(tenantId?: string) {
 
         // ── COUNT / AGGREGATE ─────────────────────────────────────────
         async count({ model, args, query }) {
-          if (isSoftDeleteModel(model)) {
-            args.where = addSoftDeleteFilter(args.where);
-            if (isTenantSoftDeleteModel(model) && tenantId) {
-              args.where = addTenantFilter(args.where, tenantId);
-            }
-          }
+          applySoftDelete(model, args);
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
         async aggregate({ model, args, query }) {
-          if (isSoftDeleteModel(model)) {
-            args.where = addSoftDeleteFilter(args.where);
-            if (isTenantSoftDeleteModel(model) && tenantId) {
-              args.where = addTenantFilter(args.where, tenantId);
-            }
-          }
+          applySoftDelete(model, args);
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
         async groupBy({ model, args, query }) {
-          if (isSoftDeleteModel(model)) {
-            args.where = addSoftDeleteFilter(args.where);
-            if (isTenantSoftDeleteModel(model) && tenantId) {
-              args.where = addTenantFilter(args.where, tenantId);
-            }
-          }
+          applySoftDelete(model, args);
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
 
         // ── UPDATE OPERATIONS ────────────────────────────────────────
         async update({ model, args, query }) {
-          if (isTenantSoftDeleteModel(model) && tenantId) {
-            args.where = addTenantFilter(args.where, tenantId);
-          }
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
         async updateMany({ model, args, query }) {
-          if (isTenantSoftDeleteModel(model) && tenantId) {
-            args.where = addTenantFilter(args.where, tenantId);
-          }
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
         async upsert({ model, args, query }) {
-          if (isTenantSoftDeleteModel(model) && tenantId) {
-            args.where = addTenantFilter(args.where, tenantId);
-          }
+          applyTenantFilter(model, args, tenantId);
           return query(args);
         },
 
@@ -167,11 +151,10 @@ export function createTenantSoftDeleteExtension(tenantId?: string) {
             // FIXED: Redirect to model.update() instead of calling original delete.
             // Prisma's delete query interceptor does NOT accept a `data` parameter,
             // so passing `data: { deletedAt }` to `_query()` would be ignored.
-            if (isTenantSoftDeleteModel(model) && tenantId) {
-              args.where = addTenantFilter(args.where, tenantId);
-            }
+            applyTenantFilter(model, args, tenantId);
             // Access the model via the extended client's update method
             const key = modelKey(model);
+            // eslint-disable-next-line @typescript-eslint/no-this-alias
             const client: any = this;
             if (client[key]?.update) {
               return await client[key].update({
@@ -185,10 +168,9 @@ export function createTenantSoftDeleteExtension(tenantId?: string) {
         async deleteMany({ model, args, query: _query }) {
           if (isSoftDeleteModel(model)) {
             // FIXED: Redirect to model.updateMany() instead of hard delete
-            if (isTenantSoftDeleteModel(model) && tenantId) {
-              args.where = addTenantFilter(args.where, tenantId);
-            }
+            applyTenantFilter(model, args, tenantId);
             const key = modelKey(model);
+            // eslint-disable-next-line @typescript-eslint/no-this-alias
             const client: any = this;
             if (client[key]?.updateMany) {
               return await client[key].updateMany({
@@ -208,7 +190,7 @@ export function createTenantSoftDeleteExtension(tenantId?: string) {
  * Add `deletedAt: null` to the where clause if not already present.
  * Allows explicit `deletedAt: { not: null }` to find deleted records.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function addSoftDeleteFilter(where: any): any {
   if (!where) {
     return { deletedAt: null };
@@ -224,7 +206,7 @@ function addSoftDeleteFilter(where: any): any {
  * Add `tenantId` filter to the where clause.
  * If tenantId is already specified, respect the explicit value.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function addTenantFilter(where: any, tenantId: string): any {
   if (!where) {
     return { tenantId };
@@ -234,4 +216,27 @@ function addTenantFilter(where: any, tenantId: string): any {
     return where;
   }
   return { ...where, tenantId };
+}
+
+/**
+ * Apply soft-delete filter (deletedAt: null) if the model supports it.
+ * Models without deletedAt field (TENANT_ONLY_MODELS) skip this.
+ */
+function applySoftDelete(model: string, args: any): void {
+  if (isSoftDeleteModel(model)) {
+    if (!args.where) args.where = {};
+    args.where = addSoftDeleteFilter(args.where);
+  }
+}
+
+/**
+ * Apply tenantId filter if the model is tenant-scoped and a tenantId was provided.
+ * Covers both TENANT_SOFT_DELETE_MODELS and TENANT_ONLY_MODELS.
+ */
+function applyTenantFilter(model: string, args: any, tenantId?: string): void {
+  if (!tenantId) return;
+  if (isTenantSoftDeleteModel(model) || isTenantOnlyModel(model)) {
+    if (!args.where) args.where = {};
+    args.where = addTenantFilter(args.where, tenantId);
+  }
 }
