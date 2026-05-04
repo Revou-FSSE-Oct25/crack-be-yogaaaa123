@@ -148,10 +148,7 @@ describe('AuthService', () => {
       const storedToken = prisma.refreshToken.create.mock.calls[0][0].data.token;
       expect(storedToken).toHaveLength(64);
       expect(storedToken).not.toBe(result.refresh_token);
-      const expectedHash = crypto
-        .createHash('sha256')
-        .update(result.refresh_token)
-        .digest('hex');
+      const expectedHash = crypto.createHash('sha256').update(result.refresh_token).digest('hex');
       expect(storedToken).toBe(expectedHash);
     });
 
@@ -298,9 +295,7 @@ describe('AuthService', () => {
         revokedAt: new Date(),
       });
 
-      await expect(service.refreshAccessToken(rawToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(service.refreshAccessToken(rawToken)).rejects.toThrow(UnauthorizedException);
     });
 
     it('should throw UnauthorizedException when token is expired', async () => {
@@ -309,9 +304,7 @@ describe('AuthService', () => {
         expiresAt: new Date(Date.now() - 86400000),
       });
 
-      await expect(service.refreshAccessToken(rawToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(service.refreshAccessToken(rawToken)).rejects.toThrow(UnauthorizedException);
     });
   });
 
