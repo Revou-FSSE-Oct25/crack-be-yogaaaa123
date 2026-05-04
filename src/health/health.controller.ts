@@ -1,6 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { HealthCheck, HealthCheckService, HealthCheckResult } from '@nestjs/terminus';
 import { PrismaHealthIndicator } from './prisma.health';
+import { Public } from '../common/decorators/public.decorator';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('health')
@@ -11,6 +13,8 @@ export class HealthController {
     private prismaHealth: PrismaHealthIndicator,
   ) {}
 
+  @Public()
+  @Throttle({ global: { ttl: 60000, limit: 20 } })
   @Get()
   @HealthCheck()
   @ApiOperation({

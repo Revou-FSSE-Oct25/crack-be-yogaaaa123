@@ -13,12 +13,14 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ auth: { ttl: 60000, limit: 5 } })
@@ -49,8 +51,8 @@ Daftarkan toko baru. Sistem akan otomatis:
     schema: {
       example: {
         message: 'Registrasi berhasil',
-        access_token: 'eyJhbGciOiJIUzI1NiIs...',
-        refresh_token: 'a1b2c3d4e5f6...',
+        access_token: '<access_token>',
+        refresh_token: '<refresh_token>',
         expires_in: 900,
         user: {
           id: 'uuid-user-1',
@@ -68,6 +70,7 @@ Daftarkan toko baru. Sistem akan otomatis:
     return this.authService.register(registerDto);
   }
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { ttl: 60000, limit: 10 } })
@@ -96,8 +99,8 @@ Login dengan username dan password.
     description: 'Login berhasil',
     schema: {
       example: {
-        access_token: 'eyJhbGciOiJIUzI1NiIs...',
-        refresh_token: 'a1b2c3d4e5f6...',
+        access_token: '<access_token>',
+        refresh_token: '<refresh_token>',
         expires_in: 900,
         user: {
           id: 'uuid-user-1',
@@ -114,6 +117,7 @@ Login dengan username dan password.
     return this.authService.login(loginDto);
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

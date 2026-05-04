@@ -23,6 +23,7 @@ import { AdminModule } from './admin/admin.module';
 import { PrismaService } from './prisma.service';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { TenantThrottlerGuard } from './common/guards/tenant-throttler.guard';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { createWinstonLoggerOptions } from './logger.config';
 
 @Module({
@@ -65,6 +66,11 @@ import { createWinstonLoggerOptions } from './logger.config';
   controllers: [],
   providers: [
     PrismaService,
+    // Global JWT Authentication — all routes require auth unless @Public()
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
     // Multi-tenant Rate Limiting — throttles per tenantId instead of per IP
     {
       provide: APP_GUARD,
