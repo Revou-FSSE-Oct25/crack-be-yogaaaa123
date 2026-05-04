@@ -26,12 +26,14 @@ model PlatformAdmin {
 // ═══════════════════════════════════════════════════════════════════════
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  slug      String   @unique
-  aiApiKey  String?  // API key untuk AI service (billing per toko)
-  createdAt DateTime @default(now())
-  deletedAt DateTime?
+  id           String   @id @default(uuid())
+  name         String   @unique
+  slug         String   @unique
+  aiApiKey     String?  // API key untuk AI service (billing per toko)
+  aiTokens     Int      @default(0)  // Total token AI untuk toko ini
+  aiTokensUsed Int      @default(0)  // Token AI yang sudah terpakai
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
 
   members      TenantMember[]
   products     Product[]
@@ -57,13 +59,15 @@ enum TenantRole {
 }
 
 model TenantUser {
-  id           String   @id @default(uuid())
-  username     String
-  passwordHash String
-  role         TenantRole @default(STAFF)
-  displayName  String?
-  createdAt    DateTime @default(now())
-  deletedAt    DateTime?
+  id                  String   @id @default(uuid())
+  username            String
+  passwordHash        String
+  role                TenantRole @default(STAFF)
+  displayName         String?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime @default(now())
+  deletedAt           DateTime?
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
@@ -76,6 +80,7 @@ model TenantUser {
   refreshTokens  RefreshToken[]
 
   @@unique([tenantId, username])
+  @@index([username, deletedAt])
   @@map("tenant_users")
 }
 
@@ -150,6 +155,7 @@ model Product {
   @@unique([tenantId, sku])
   @@index([sku])
   @@index([name])
+  @@index([stockQuantity, reorderLevel, tenantId])
   @@map("products")
 }
 

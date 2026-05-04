@@ -7,6 +7,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -69,6 +70,7 @@ async function bootstrap() {
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(
     new PrismaClientExceptionFilter(httpAdapter), // Specific: Prisma errors
+    new HttpExceptionFilter(), // HTTP exceptions (401, 403, 404, etc.)
     new AllExceptionsFilter(), // Fallback: any unhandled error
   );
 

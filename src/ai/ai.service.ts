@@ -1,7 +1,22 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { AxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
+import { PrismaService } from '../prisma.service';
 import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
+
+interface ChatHistoryMessage {
+  role?: string;
+  parts?: string[];
+  content?: string;
+  text?: string;
+}
+
+export interface AiChatResponse {
+  reply: string;
+  toolsUsed: string[];
+  [key: string]: unknown;
+}
 
 @Injectable()
 export class AiService {
@@ -9,7 +24,10 @@ export class AiService {
   private readonly aiBaseUrl: string;
   private readonly internalApiKey: string;
 
-  constructor(private readonly httpService: HttpService) {
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly prisma: PrismaService,
+  ) {
     this.aiBaseUrl = process.env.AI_SERVICE_URL || 'http://localhost:8001';
     this.internalApiKey = process.env.AI_INTERNAL_API_KEY || '';
   }
@@ -25,14 +43,32 @@ export class AiService {
    */
   async chat(
     message: string,
-    history: any[],
+    history: ChatHistoryMessage[],
     token: string,
     user?: AuthenticatedUser,
-  ): Promise<any> {
+  ): Promise<AiChatResponse> {
+    // ── CEK TOKEN AI (per toko/tenant) ────────────────────────────
+    if (user && !user.isSuperAdmin) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: user.tenantId },
+        select: { aiTokens: true, aiTokensUsed: true },
+      });
+
+      if (!tenant || tenant.aiTokens - tenant.aiTokensUsed <= 0) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.PAYMENT_REQUIRED,
+            message: 'Token AI toko habis. Hubungi admin untuk menambah token.',
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
     const url = `${this.aiBaseUrl}/chat`;
 
     // Transform history from FE format ({role, content}) to Python AI format ({role, parts: [string]})
-    const transformedHistory = (history || []).map((msg: any) => {
+    const transformedHistory = (history || []).map((msg: ChatHistoryMessage) => {
       if (msg.parts) {
         // Already in correct format
         return msg;
@@ -47,7 +83,7 @@ export class AiService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
+        this.httpService.post<AiChatResponse>(
           url,
           { message, history: transformedHistory },
           {
@@ -61,15 +97,17 @@ export class AiService {
       );
 
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<{ detail?: string; message?: string }>;
+
       this.logger.error(
-        `AI service error [user=${user?.username || 'unknown'}]: ${error.message}`,
-        error.response?.data || error.stack,
+        `AI service error [user=${user?.username || 'unknown'}]: ${axiosError.message}`,
+        axiosError.response?.data || axiosError.stack,
       );
 
-      if (error.response) {
-        const statusCode = error.response.status;
-        const errorData = error.response.data;
+      if (axiosError.response) {
+        const statusCode = axiosError.response.status;
+        const errorData = axiosError.response.data;
 
         if (statusCode === HttpStatus.UNAUTHORIZED) {
           throw new HttpException(

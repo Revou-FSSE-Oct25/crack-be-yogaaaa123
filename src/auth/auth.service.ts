@@ -1,4 +1,10 @@
-import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  Logger,
+  ForbiddenException,
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -6,6 +12,13 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+
+/** Maksimum percobaan login gagal sebelum akun dikunci */
+const MAX_FAILED_ATTEMPTS = 5;
+/** Durasi penguncian akun dalam menit setelah melebihi batas */
+const LOCK_DURATION_MINUTES = 30;
+/** Window waktu (menit) untuk reset counter percobaan gagal */
+const FAILED_ATTEMPT_WINDOW_MINUTES = 15;
 
 @Injectable()
 export class AuthService {
@@ -26,10 +39,33 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // ── BRUTE FORCE CHECK ──────────────────────────────────────────
+    if (this.isAccountLocked(user.lockedUntil)) {
+      const remainingMinutes = Math.ceil(
+        (user.lockedUntil!.getTime() - Date.now()) / 60000,
+      );
+      this.logger.warn(
+        `Login blocked: user ${user.username} is locked for ${remainingMinutes} more minutes`,
+      );
+      throw new ForbiddenException(
+        `Account is temporarily locked. Please try again in ${remainingMinutes} minutes.`,
+      );
+    }
+
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.passwordHash);
 
     if (!isPasswordValid) {
+      // ── TRACK FAILED ATTEMPTS ──────────────────────────────────
+      await this.incrementFailedAttempts(user.id);
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // ── RESET ON SUCCESS ───────────────────────────────────────────
+    if (user.failedLoginAttempts > 0) {
+      await this.prisma.tenantUser.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
     }
 
     const payload = {
@@ -44,15 +80,19 @@ export class AuthService {
       expiresIn: this.ACCESS_TOKEN_EXPIRES,
     });
 
-    // Generate refresh token
-    const refresh_token = crypto.randomBytes(40).toString('hex');
+    // Generate refresh token — SIMPAN HASH, KEMBALIKAN RAW
+    const rawRefreshToken = crypto.randomBytes(40).toString('hex');
+    const hashedRefreshToken = crypto
+      .createHash('sha256')
+      .update(rawRefreshToken)
+      .digest('hex');
     const refreshExpiresAt = new Date();
     refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
 
-    // Simpan refresh token ke database
+    // Simpan HASH refresh token ke database
     await this.prisma.refreshToken.create({
       data: {
-        token: refresh_token,
+        token: hashedRefreshToken,
         userId: user.id,
         expiresAt: refreshExpiresAt,
       },
@@ -62,7 +102,7 @@ export class AuthService {
 
     return {
       access_token,
-      refresh_token,
+      refresh_token: rawRefreshToken,
       expires_in: 900, // 15 menit dalam detik
       user: {
         id: user.id,
@@ -74,9 +114,12 @@ export class AuthService {
   }
 
   async refreshAccessToken(refreshToken: string) {
+    // Hash token yang masuk untuk pencocokan database
+    const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
     // Cari refresh token yang valid dan belum expired
     const storedToken = await this.prisma.refreshToken.findUnique({
-      where: { token: refreshToken },
+      where: { token: hashedToken },
       include: { user: true },
     });
 
@@ -110,14 +153,15 @@ export class AuthService {
       expiresIn: this.ACCESS_TOKEN_EXPIRES,
     });
 
-    // Generate new refresh token
-    const newRefreshToken = crypto.randomBytes(40).toString('hex');
+    // Generate new refresh token — SIMPAN HASH, KEMBALIKAN RAW
+    const newRawToken = crypto.randomBytes(40).toString('hex');
+    const newHashedToken = crypto.createHash('sha256').update(newRawToken).digest('hex');
     const refreshExpiresAt = new Date();
     refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
 
     await this.prisma.refreshToken.create({
       data: {
-        token: newRefreshToken,
+        token: newHashedToken,
         userId: storedToken.user.id,
         expiresAt: refreshExpiresAt,
       },
@@ -125,7 +169,7 @@ export class AuthService {
 
     return {
       access_token: newAccessToken,
-      refresh_token: newRefreshToken,
+      refresh_token: newRawToken,
       expires_in: 900,
     };
   }
@@ -155,7 +199,6 @@ export class AuthService {
     }
 
     // Cek apakah username sudah dipakai di tenant manapun
-    // (username unique per tenant, tapi kita cek global untuk UX yang lebih baik)
     const existingUsername = await this.prisma.tenantUser.findFirst({
       where: { username },
     });
@@ -164,13 +207,11 @@ export class AuthService {
     }
 
     // ── HASH PASSWORD ─────────────────────────────────────────────
-    const salt = await bcrypt.genSalt(12); // cost factor 12 — lebih aman
+    const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
     // ── TRANSAKSI ATOMIK ──────────────────────────────────────────
-    // Semua atau tidak sama sekali — jika gagal di tengah, rollback total
     const result = await this.prisma.$transaction(async (tx) => {
-      // 1. Buat Platform User
       const platformUser = await tx.platformUser.create({
         data: {
           email,
@@ -179,7 +220,6 @@ export class AuthService {
         },
       });
 
-      // 2. Buat Tenant (Toko)
       const tenant = await tx.tenant.create({
         data: {
           name: storeName,
@@ -187,7 +227,6 @@ export class AuthService {
         },
       });
 
-      // 3. Buat Tenant Member (hubungkan platform user ke tenant sebagai OWNER)
       await tx.tenantMember.create({
         data: {
           role: 'OWNER',
@@ -196,7 +235,6 @@ export class AuthService {
         },
       });
 
-      // 4. Buat Tenant User (admin toko)
       const tenantUser = await tx.tenantUser.create({
         data: {
           username,
@@ -226,13 +264,17 @@ export class AuthService {
       expiresIn: this.ACCESS_TOKEN_EXPIRES,
     });
 
-    const refresh_token = crypto.randomBytes(40).toString('hex');
+    const rawRefreshToken = crypto.randomBytes(40).toString('hex');
+    const hashedRefreshToken = crypto
+      .createHash('sha256')
+      .update(rawRefreshToken)
+      .digest('hex');
     const refreshExpiresAt = new Date();
     refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
 
     await this.prisma.refreshToken.create({
       data: {
-        token: refresh_token,
+        token: hashedRefreshToken,
         userId: result.tenantUser.id,
         expiresAt: refreshExpiresAt,
       },
@@ -241,7 +283,7 @@ export class AuthService {
     return {
       message: 'Registrasi berhasil',
       access_token,
-      refresh_token,
+      refresh_token: rawRefreshToken,
       expires_in: 900,
       user: {
         id: result.tenantUser.id,
@@ -254,7 +296,6 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    // Revoke all active refresh tokens untuk user ini
     await this.prisma.refreshToken.updateMany({
       where: {
         userId,
@@ -265,5 +306,52 @@ export class AuthService {
 
     this.logger.log(`User ${userId} logged out, all refresh tokens revoked`);
     return { message: 'Logged out successfully' };
+  }
+
+  // ── PRIVATE HELPERS ───────────────────────────────────────────────
+
+  /**
+   * Mengecek apakah akun sedang terkunci berdasarkan timestamp lockedUntil.
+   */
+  private isAccountLocked(lockedUntil: Date | null): boolean {
+    if (!lockedUntil) return false;
+    return new Date() < lockedUntil;
+  }
+
+  /**
+   * Mencatat percobaan login gagal. Jika melebihi batas, kunci akun.
+   *
+   * Logika:
+   * 1. Increment failedLoginAttempts
+   * 2. Jika mencapai MAX_FAILED_ATTEMPTS, set lockedUntil = now + LOCK_DURATION
+   * 3. Reset counter jika window waktu sudah berlalu (reset ke 1)
+   */
+  private async incrementFailedAttempts(userId: string): Promise<void> {
+    const user = await this.prisma.tenantUser.findUnique({
+      where: { id: userId },
+      select: { id: true, failedLoginAttempts: true, lockedUntil: true },
+    });
+
+    if (!user) return;
+
+    const newAttempts = user.failedLoginAttempts + 1;
+    const lockedUntil =
+      newAttempts >= MAX_FAILED_ATTEMPTS
+        ? new Date(Date.now() + LOCK_DURATION_MINUTES * 60 * 1000)
+        : null;
+
+    await this.prisma.tenantUser.update({
+      where: { id: userId },
+      data: {
+        failedLoginAttempts: newAttempts,
+        lockedUntil,
+      },
+    });
+
+    if (lockedUntil) {
+      this.logger.warn(
+        `Account ${userId} locked for ${LOCK_DURATION_MINUTES} minutes after ${newAttempts} failed attempts`,
+      );
+    }
   }
 }

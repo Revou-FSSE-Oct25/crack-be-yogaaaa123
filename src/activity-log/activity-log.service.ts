@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { ActivityAction } from '@prisma/client';
+import { ActivityAction, Prisma } from '@prisma/client';
 
 @Injectable()
 export class ActivityLogService {
@@ -21,7 +21,7 @@ export class ActivityLogService {
         entity: params.entity,
         entityId: params.entityId,
         tenantId: params.tenantId,
-        metadata: (params.metadata ?? {}) as any,
+        metadata: (params.metadata ?? {}) as Prisma.InputJsonValue,
       },
     });
   }

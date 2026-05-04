@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "tenant_users" ADD COLUMN     "aiTokens" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "aiTokensUsed" INTEGER NOT NULL DEFAULT 0;

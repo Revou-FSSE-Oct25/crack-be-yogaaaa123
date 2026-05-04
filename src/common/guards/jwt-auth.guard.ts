@@ -8,13 +8,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  handleRequest<TUser = any>(err: any, user: any): TUser {
+  handleRequest<TUser extends AuthenticatedUser = AuthenticatedUser>(
+    err: Error | null,
+    user: TUser | false,
+  ): TUser {
     if (err || !user) {
       throw (
-        (err as Error) ?? new UnauthorizedException('Authentication token is missing or invalid')
+        err ?? new UnauthorizedException('Authentication token is missing or invalid')
       );
     }
-    return user as TUser;
+    return user;
   }
 }
 

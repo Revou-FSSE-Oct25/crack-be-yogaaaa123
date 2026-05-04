@@ -1,4 +1,4 @@
-import { PrismaClient, TenantRole } from '@prisma/client';
+import { PrismaClient, TenantRole, type Product } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
@@ -39,6 +39,7 @@ async function main() {
     prisma.tenantUser.deleteMany(),
     prisma.tenant.deleteMany(),
     prisma.platformUser.deleteMany(),
+    prisma.platformAdmin.deleteMany(),
   ]);
   console.log('✅ Data cleanup completed.');
 
@@ -48,6 +49,8 @@ async function main() {
     data: {
       name: 'Default Store',
       slug: 'default-store',
+      aiTokens: 150,
+      aiTokensUsed: 0,
     },
   });
   console.log(`✅ Tenant created: ${tenant.name} (${tenant.slug})`);
@@ -223,7 +226,7 @@ async function main() {
     },
   ];
 
-  const products: any[] = [];
+  const products: Product[] = [];
   for (const pData of productsData) {
     const product = await prisma.product.create({
       data: {
@@ -335,7 +338,7 @@ async function main() {
   console.log(`✅ Purchase Order ${po2.orderNumber} created & stock updated.`);
 
   // Reload products to get updated stock and averageCost
-  const updatedProducts: any[] = [];
+  const updatedProducts: Product[] = [];
   for (const p of products) {
     const up = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
     updatedProducts.push(up);

@@ -43,7 +43,7 @@ export class TenantThrottlerGuard extends ThrottlerGuard {
    * 1. Authenticated user: `tenantId:userId` (tenant-aware)
    * 2. Unauthenticated: `ip:user-agent` (fallback)
    */
-  protected async getTracker(req: Record<string, any>): Promise<string> {
+  protected async getTracker(req: Record<string, unknown>): Promise<string> {
     // If user is authenticated, use tenantId as the primary tracker
     const user = req.user as { id?: string; tenantId?: string } | undefined;
 

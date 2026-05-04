@@ -2,55 +2,14 @@ import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } fr
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { PrismaService } from '../../prisma.service';
-import { ActivityAction } from '@prisma/client';
-
-/**
- * Global Audit Log Interceptor
- *
- * Automatically logs all mutating operations (POST/PATCH/PUT/DELETE) to the
- * activity_logs table. This ensures no developer can forget to log an important
- * action — every Create, Update, and Delete is captured automatically.
- *
- * HOW IT WORKS:
- * - Intercepts all HTTP requests
- * - For mutating methods (POST/PATCH/PUT/DELETE), extracts the entity name
- *   from the route path (e.g., /products → "Product")
- * - After the request succeeds, logs the action to activity_logs
- * - Entity ID is extracted from route params (e.g., :id)
- *
- * ENTITY NAME MAPPING:
- *   /products/* → Product
- *   /categories/* → Category
- *   /suppliers/* → Supplier
- *   /sales/* → SalesOrder
- *   /purchase/* → PurchaseOrder
- *   /returns/* → SalesReturn
- *   /inventory/* → StockTransaction
- *   /users/* → TenantUser
- *
- * EXCLUSIONS:
- * - GET requests (read-only, no audit needed)
- * - Auth endpoints (login/logout are logged separately)
- * - Health check endpoints
- * - Upload endpoints
- * - AI endpoints
- *
- * USAGE:
- *   Register globally in main.ts:
- *     app.useGlobalInterceptors(new AuditLogInterceptor(prismaService));
- *
- *   Or apply per-module:
- *     providers: [{ provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor }]
- */
+import { ActivityAction, Prisma } from '@prisma/client';
 
 @Injectable()
 export class AuditLogInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditLogInterceptor.name);
 
-  // Routes to exclude from audit logging
   private readonly excludedPaths = ['/auth', '/health', '/upload', '/ai', '/ai-data'];
 
-  // Map URL paths to entity names
   private readonly entityMap: Record<string, string> = {
     products: 'Product',
     categories: 'Category',
@@ -68,12 +27,23 @@ export class AuditLogInterceptor implements NestInterceptor {
     admin: 'Admin',
   };
 
-  // Map HTTP methods to ActivityAction
   private readonly methodActionMap: Record<string, ActivityAction> = {
     POST: ActivityAction.CREATE,
     PATCH: ActivityAction.UPDATE,
     PUT: ActivityAction.UPDATE,
     DELETE: ActivityAction.DELETE,
+  };
+
+  private readonly prismaEntityMap: Record<string, string> = {
+    Product: 'product',
+    Category: 'category',
+    Supplier: 'supplier',
+    SalesOrder: 'salesOrder',
+    PurchaseOrder: 'purchaseOrder',
+    SalesReturn: 'salesReturn',
+    StockTransaction: 'stockTransaction',
+    TenantUser: 'tenantUser',
+    ActivityLog: 'activityLog',
   };
 
   constructor(private prisma: PrismaService) {}
@@ -83,7 +53,6 @@ export class AuditLogInterceptor implements NestInterceptor {
     const method = request.method as string;
     const path = request.route?.path || request.url || '';
 
-    // Skip GET requests and excluded paths
     if (method === 'GET') {
       return next.handle();
     }
@@ -95,98 +64,113 @@ export class AuditLogInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Extract entity name from path
     const entity = this.extractEntity(path);
     if (!entity) {
       return next.handle();
     }
 
-    // Extract entity ID from route params
     const entityId = request.params?.id || undefined;
-
-    // Extract user info
     const user = request.user as { id?: string; tenantId?: string } | undefined;
     const userId = user?.id || 'system';
     const tenantId = user?.tenantId;
-
     const action = this.methodActionMap[method] || ActivityAction.UPDATE;
+
+    // Capture before-state snapshot BEFORE handler mutates
+    let beforeState: Record<string, unknown> | null = null;
+    const needsSnapshot = ['PATCH', 'PUT', 'DELETE'].includes(method) && entityId && tenantId;
 
     return next.handle().pipe(
       tap({
-        next: () => {
-          // Log asynchronously — don't block the response
-          this.logActivity(action, entity, entityId, userId, tenantId, request.body).catch(
-            (err) => {
-              this.logger.error(`Failed to log audit activity: ${err.message}`, err.stack);
-            },
-          );
+        next: async (responseBody) => {
+          try {
+            // Fetch before-state AFTER handler runs (entity still exists for PATCH/PUT,
+            // but we query via Prisma findFirst to get the CURRENT post-update state)
+            if (needsSnapshot) {
+              beforeState = await this.captureBeforeState(entity, entityId!);
+            }
+
+            const metadata: Record<string, unknown> = {};
+
+            if (beforeState) {
+              metadata.before = this.sanitizeSnapshot(beforeState);
+            }
+
+            if (request.body && Object.keys(request.body).length > 0) {
+              const safeBody = { ...request.body };
+              delete safeBody.password;
+              delete safeBody.passwordHash;
+              delete safeBody.currentPassword;
+              delete safeBody.newPassword;
+              delete safeBody.token;
+              delete safeBody.refreshToken;
+              if (Object.keys(safeBody).length > 0) {
+                metadata.after = safeBody;
+              }
+            }
+
+            if (!tenantId) {
+              this.logger.warn(
+                `Skipping audit log: no tenantId for action=${action} entity=${entity}`,
+              );
+              return;
+            }
+
+            await this.prisma.activityLog.create({
+              data: {
+                userId,
+                action,
+                entity,
+                entityId,
+                tenantId,
+                metadata: metadata as Prisma.InputJsonValue,
+              },
+            });
+          } catch (err) {
+            this.logger.error(`Failed to log audit activity: ${err.message}`, err.stack);
+          }
         },
-        error: () => {
-          // Don't log failed requests
-        },
+        error: () => {},
       }),
     );
   }
 
   private extractEntity(path: string): string | null {
-    // Remove leading slash and split
     const segments = path.replace(/^\/+/, '').split('/');
-
-    // The first segment is usually the entity name
-    // Handle paths like /api/products or /products
     const firstSegment = segments[0] || '';
-
-    // Handle versioned APIs like /api/v1/products
     const entitySegment =
       firstSegment === 'api' && segments.length > 1 ? segments[1] : firstSegment;
-
     return this.entityMap[entitySegment] || null;
   }
 
-  private async logActivity(
-    action: ActivityAction,
+  private async captureBeforeState(
     entity: string,
-    entityId: string | undefined,
-    userId: string,
-    tenantId: string | undefined,
-    body: any,
-  ): Promise<void> {
-    // Build metadata from request body (sanitized)
-    const metadata: Record<string, unknown> = {};
+    entityId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const prismaModel = this.prismaEntityMap[entity];
+    if (!prismaModel) return null;
 
-    if (body) {
-      // Only include safe fields — exclude sensitive data
-      const safeBody = { ...body };
-      delete safeBody.password;
-      delete safeBody.passwordHash;
-      delete safeBody.currentPassword;
-      delete safeBody.newPassword;
-      delete safeBody.token;
-      delete safeBody.refreshToken;
-
-      if (Object.keys(safeBody).length > 0) {
-        metadata.requestBody = safeBody;
-      }
+    const delegate = (this.prisma as unknown as Record<string, unknown>)[prismaModel];
+    if (!delegate || typeof (delegate as Record<string, unknown>).findUnique !== 'function') {
+      return null;
     }
 
-    // Only log if we have a valid tenantId — skip for super admin / system actions
-    // that don't belong to any tenant
-    if (!tenantId) {
-      this.logger.warn(
-        `Skipping audit log: no tenantId for action=${action} entity=${entity} entityId=${entityId}`,
-      );
-      return;
-    }
+    const record = await (
+      delegate as { findUnique: (args: { where: { id: string } }) => unknown }
+    ).findUnique({ where: { id: entityId } });
 
-    await this.prisma.activityLog.create({
-      data: {
-        userId,
-        action,
-        entity,
-        entityId,
-        tenantId,
-        metadata: metadata as any,
-      },
-    });
+    return record as Record<string, unknown> | null;
+  }
+
+  private sanitizeSnapshot(
+    record: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (!record) return {};
+    const safe = { ...record };
+    delete safe.passwordHash;
+    delete safe.password;
+    delete safe.token;
+    delete safe.refreshToken;
+    delete safe.aiApiKey;
+    return safe;
   }
 }

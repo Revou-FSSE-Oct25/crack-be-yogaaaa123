@@ -208,6 +208,7 @@ export function createTenantSoftDeleteExtension(tenantId?: string) {
  * Add `deletedAt: null` to the where clause if not already present.
  * Allows explicit `deletedAt: { not: null }` to find deleted records.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function addSoftDeleteFilter(where: any): any {
   if (!where) {
     return { deletedAt: null };
@@ -223,6 +224,7 @@ function addSoftDeleteFilter(where: any): any {
  * Add `tenantId` filter to the where clause.
  * If tenantId is already specified, respect the explicit value.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function addTenantFilter(where: any, tenantId: string): any {
   if (!where) {
     return { tenantId };

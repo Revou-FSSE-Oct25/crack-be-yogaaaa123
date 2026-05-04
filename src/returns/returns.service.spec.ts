@@ -6,7 +6,7 @@ import { Prisma } from '@prisma/client';
 
 const mockPrismaService = () => ({
   salesOrder: {
-    findUnique: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
   },
   salesReturn: {
@@ -73,7 +73,7 @@ describe('ReturnsService', () => {
     function setupGetClientMock() {
       const mockClient = {
         salesOrder: {
-          findUnique: jest.fn(),
+          findFirst: jest.fn(),
         },
       };
       prisma.getClient.mockReturnValue(mockClient);
@@ -82,7 +82,7 @@ describe('ReturnsService', () => {
 
     it('should create a return and update financials correctly', async () => {
       const mockClient = setupGetClientMock();
-      mockClient.salesOrder.findUnique.mockResolvedValue(mockSalesOrder);
+      mockClient.salesOrder.findFirst.mockResolvedValue(mockSalesOrder);
 
       const mockReturn = {
         id: 'ret-1',
@@ -121,7 +121,7 @@ describe('ReturnsService', () => {
 
     it('should throw NotFoundException when sales order does not exist', async () => {
       const mockClient = setupGetClientMock();
-      mockClient.salesOrder.findUnique.mockResolvedValue(null);
+      mockClient.salesOrder.findFirst.mockResolvedValue(null);
 
       await expect(service.createReturn(returnDto, 'user-1', 'tenant-1')).rejects.toThrow(
         NotFoundException,
@@ -130,7 +130,7 @@ describe('ReturnsService', () => {
 
     it('should throw BadRequestException for non-COMPLETED orders', async () => {
       const mockClient = setupGetClientMock();
-      mockClient.salesOrder.findUnique.mockResolvedValue({
+      mockClient.salesOrder.findFirst.mockResolvedValue({
         ...mockSalesOrder,
         status: 'PENDING',
       });
@@ -142,7 +142,7 @@ describe('ReturnsService', () => {
 
     it('should throw BadRequestException when return quantity exceeds returnable quantity', async () => {
       const mockClient = setupGetClientMock();
-      mockClient.salesOrder.findUnique.mockResolvedValue({
+      mockClient.salesOrder.findFirst.mockResolvedValue({
         ...mockSalesOrder,
         items: [
           {
@@ -165,7 +165,7 @@ describe('ReturnsService', () => {
 
     it('should throw BadRequestException when orderItem does not belong to the sales order', async () => {
       const mockClient = setupGetClientMock();
-      mockClient.salesOrder.findUnique.mockResolvedValue(mockSalesOrder);
+      mockClient.salesOrder.findFirst.mockResolvedValue(mockSalesOrder);
 
       const invalidReturn = {
         ...returnDto,
@@ -179,7 +179,7 @@ describe('ReturnsService', () => {
 
     it('should correctly decrement totalProfit and totalCogs on the sales order', async () => {
       const mockClient = setupGetClientMock();
-      mockClient.salesOrder.findUnique.mockResolvedValue(mockSalesOrder);
+      mockClient.salesOrder.findFirst.mockResolvedValue(mockSalesOrder);
 
       let capturedSalesOrderUpdate: any;
 
@@ -290,7 +290,7 @@ describe('ReturnsService', () => {
       };
 
       const mockClient = {
-        salesReturn: { findUniqueOrThrow: jest.fn().mockResolvedValue(mockReturn) },
+        salesReturn: { findFirst: jest.fn().mockResolvedValue(mockReturn) },
       };
       prisma.getClient.mockReturnValue(mockClient);
 
@@ -300,7 +300,7 @@ describe('ReturnsService', () => {
 
     it('should throw NotFoundException when return does not exist', async () => {
       const mockClient = {
-        salesReturn: { findUniqueOrThrow: jest.fn().mockRejectedValue(new Error('Not found')) },
+        salesReturn: { findFirst: jest.fn().mockRejectedValue(new Error('Not found')) },
       };
       prisma.getClient.mockReturnValue(mockClient);
 

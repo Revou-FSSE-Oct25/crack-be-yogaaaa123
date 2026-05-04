@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
+import { ROLES } from '../constants/roles.constant';
 import type { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 
 @Injectable()
@@ -23,8 +24,7 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('User is not authenticated');
     }
 
-    // SUPER_ADMIN bypasses all role checks
-    if (user.isSuperAdmin || user.role === 'SUPER_ADMIN') {
+    if (user.isSuperAdmin || user.role === ROLES.SUPER_ADMIN) {
       return true;
     }
 

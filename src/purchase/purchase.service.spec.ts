@@ -191,7 +191,9 @@ describe('PurchaseService', () => {
         items: [{ productId: 'prod-1', quantity: 10, unitPrice: new Prisma.Decimal('100.00') }],
       };
 
-      prisma.purchaseOrder.findUniqueOrThrow.mockResolvedValue(mockPendingPO);
+      prisma.getClient.mockReturnValue({
+        purchaseOrder: { findFirst: jest.fn().mockResolvedValue(mockPendingPO) },
+      });
 
       prisma.$transaction.mockImplementation(async (callback: Function) => {
         const tx = {
@@ -222,10 +224,12 @@ describe('PurchaseService', () => {
     });
 
     it('should throw BadRequestException when order is already RECEIVED', async () => {
-      prisma.purchaseOrder.findUniqueOrThrow.mockResolvedValue({
-        id: 'po-1',
-        orderNumber: 'PO-1001',
-        status: PurchaseOrderStatus.RECEIVED,
+      prisma.getClient.mockReturnValue({
+        purchaseOrder: { findFirst: jest.fn().mockResolvedValue({
+          id: 'po-1',
+          orderNumber: 'PO-1001',
+          status: PurchaseOrderStatus.RECEIVED,
+        }) },
       });
 
       await expect(service.receivePurchaseOrder('po-1', 'user-1', 'tenant-1')).rejects.toThrow(
@@ -246,7 +250,7 @@ describe('PurchaseService', () => {
         const tx = {
           purchaseOrder: {
             updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-            findUniqueOrThrow: jest.fn().mockResolvedValue(mockOrder),
+            findFirst: jest.fn().mockResolvedValue(mockOrder),
           },
         };
         return callback(tx);
@@ -261,7 +265,7 @@ describe('PurchaseService', () => {
         const tx = {
           purchaseOrder: {
             updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-            findUnique: jest.fn().mockResolvedValue({
+            findFirst: jest.fn().mockResolvedValue({
               id: 'po-1',
               status: PurchaseOrderStatus.RECEIVED,
             }),
@@ -280,7 +284,7 @@ describe('PurchaseService', () => {
         const tx = {
           purchaseOrder: {
             updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-            findUnique: jest.fn().mockResolvedValue(null),
+            findFirst: jest.fn().mockResolvedValue(null),
           },
         };
         return callback(tx);
@@ -336,7 +340,7 @@ describe('PurchaseService', () => {
       };
 
       const mockClient = {
-        purchaseOrder: { findUniqueOrThrow: jest.fn().mockResolvedValue(mockOrder) },
+        purchaseOrder: { findFirst: jest.fn().mockResolvedValue(mockOrder) },
       };
       prisma.getClient.mockReturnValue(mockClient);
 

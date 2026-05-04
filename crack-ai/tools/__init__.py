@@ -18,6 +18,61 @@ from typing import Any
 
 from config import settings
 
+# ─── Tool Dispatcher ───────────────────────────────────────────────────────────
+async def execute_tool(
+    tool_name: str,
+    user_id: str,
+    role: str,
+    tenant_id: str,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """
+    Dispatch a tool call to the appropriate tool function.
+
+    SECURITY:
+    - user_id, role, and tenant_id are ALWAYS from JWT (function parameters)
+    - Never take these values from kwargs sent by AI
+    - tenant_id ensures multi-tenant data isolation
+    """
+    from tools.categories import get_categories
+    from tools.dashboard import get_dashboard_summary
+    from tools.inventory import get_inventory_value, get_stock_transactions
+    from tools.products import get_low_stock_products, get_top_products, search_products
+    from tools.sales import get_sales_report, get_profit_loss, get_sales_returns
+    from tools.suppliers import get_suppliers, get_purchase_orders
+    from tools.users import get_users, get_activity_logs
+
+    tool_map = {
+        "get_dashboard_summary": get_dashboard_summary,
+        "get_low_stock_products": get_low_stock_products,
+        "get_sales_report": get_sales_report,
+        "get_profit_loss": get_profit_loss,
+        "get_top_products": get_top_products,
+        "search_products": search_products,
+        "get_inventory_value": get_inventory_value,
+        "get_categories": get_categories,
+        "get_suppliers": get_suppliers,
+        "get_purchase_orders": get_purchase_orders,
+        "get_stock_transactions": get_stock_transactions,
+        "get_sales_returns": get_sales_returns,
+        "get_users": get_users,
+        "get_activity_logs": get_activity_logs,
+    }
+
+    fn = tool_map.get(tool_name)
+    if fn is None:
+        return {"error": f"Tool '{tool_name}' not found."}
+
+    try:
+        result = await fn(user_id=user_id, role=role, tenant_id=tenant_id, **kwargs)
+        return result
+    except PermissionError as e:
+        return {"error": f"Access denied: {str(e)}"}
+    except ValueError as e:
+        return {"error": f"Invalid input: {str(e)}"}
+    except Exception as e:
+        return {"error": f"An internal error occurred: {str(e)}"}
+
 
 # ─── Safe LIMIT ────────────────────────────────────────────────────────────────
 def cap(value: int | None, default: int = 20) -> int:

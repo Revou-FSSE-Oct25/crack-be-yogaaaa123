@@ -137,10 +137,7 @@ describe('InventoryService', () => {
             create: jest.fn().mockResolvedValue({}),
           },
           product: {
-            update: jest.fn().mockResolvedValue({
-              id: productId,
-              stockQuantity: -2,
-            }),
+            update: jest.fn().mockResolvedValue(null),
           },
         };
         return await callback(tx);

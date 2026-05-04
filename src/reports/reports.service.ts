@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { stringify } from 'csv-stringify/sync';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ReportsService {
@@ -8,7 +9,7 @@ export class ReportsService {
 
   async getSalesReport(tenantId: string, startDate?: string, endDate?: string) {
     const prisma = this.prisma.getClient(tenantId);
-    const where: any = {};
+    const where: Prisma.SalesOrderWhereInput = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
@@ -56,7 +57,7 @@ export class ReportsService {
 
   async getProfitLoss(tenantId: string, startDate?: string, endDate?: string) {
     const prisma = this.prisma.getClient(tenantId);
-    const where: any = {};
+    const where: Prisma.SalesOrderWhereInput = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
@@ -88,7 +89,7 @@ export class ReportsService {
 
   async exportSalesCsv(tenantId: string, startDate?: string, endDate?: string): Promise<string> {
     const prisma = this.prisma.getClient(tenantId);
-    const where: any = {};
+    const where: Prisma.SalesOrderWhereInput = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
@@ -106,7 +107,20 @@ export class ReportsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const records: any[] = [];
+    interface CsvRecord {
+      'Order Number': string;
+      Status: string;
+      Product: string;
+      SKU: string;
+      Quantity: number;
+      'Unit Price': number;
+      'Total Price': number;
+      Profit: number;
+      Cashier: string;
+      Date: string;
+    }
+
+    const records: CsvRecord[] = [];
     for (const order of orders) {
       for (const item of order.items) {
         records.push({
@@ -159,7 +173,7 @@ export class ReportsService {
     endDate?: string,
   ): Promise<string> {
     const prisma = this.prisma.getClient(tenantId);
-    const where: any = { status: 'COMPLETED' };
+    const where: Prisma.SalesOrderWhereInput = { status: 'COMPLETED' };
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);

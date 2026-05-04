@@ -18,7 +18,7 @@ export class CategoriesService {
 
   async findAll(tenantId: string, skip?: number, take?: number) {
     const prisma = this.prisma.getClient(tenantId);
-    const where = {};
+    const where = { deletedAt: null };
 
     const [data, total] = await Promise.all([
       prisma.category.findMany({
@@ -36,7 +36,7 @@ export class CategoriesService {
   async findOne(id: string, tenantId: string) {
     const prisma = this.prisma.getClient(tenantId);
     const category = await prisma.category.findFirst({
-      where: { id },
+      where: { id, deletedAt: null },
     });
     if (!category) {
       throw new NotFoundException(`Category ${id} not found`);

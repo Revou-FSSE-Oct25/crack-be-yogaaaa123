@@ -153,12 +153,7 @@ describe('SalesService', () => {
         const tx = {
           product: {
             findMany: jest.fn().mockResolvedValue(mockProducts),
-            update: jest.fn().mockResolvedValue({
-              id: 'prod-1',
-              name: 'Product 1',
-              stockQuantity: -1,
-              reorderLevel: 10,
-            }),
+            update: jest.fn().mockResolvedValue(null),
           },
           salesOrder: {
             create: jest.fn().mockResolvedValue(mockSalesOrder),
@@ -334,7 +329,7 @@ describe('SalesService', () => {
         const tx = {
           salesOrder: {
             updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-            findUniqueOrThrow: jest.fn().mockResolvedValue(mockOrder),
+            findFirst: jest.fn().mockResolvedValue(mockOrder),
           },
         };
         return callback(tx);
@@ -349,7 +344,7 @@ describe('SalesService', () => {
         const tx = {
           salesOrder: {
             updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-            findUnique: jest.fn().mockResolvedValue({
+            findFirst: jest.fn().mockResolvedValue({
               id: 'so-1',
               status: 'COMPLETED',
             }),
@@ -366,7 +361,7 @@ describe('SalesService', () => {
         const tx = {
           salesOrder: {
             updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-            findUnique: jest.fn().mockResolvedValue({
+            findFirst: jest.fn().mockResolvedValue({
               id: 'so-1',
               status: 'CANCELLED',
             }),
@@ -383,7 +378,7 @@ describe('SalesService', () => {
         const tx = {
           salesOrder: {
             updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-            findUnique: jest.fn().mockResolvedValue(null),
+            findFirst: jest.fn().mockResolvedValue(null),
           },
         };
         return callback(tx);
@@ -467,7 +462,7 @@ describe('SalesService', () => {
       };
 
       const mockClient = {
-        salesOrder: { findUniqueOrThrow: jest.fn().mockResolvedValue(mockOrder) },
+        salesOrder: { findFirst: jest.fn().mockResolvedValue(mockOrder) },
       };
       prisma.getClient.mockReturnValue(mockClient);
 
@@ -478,7 +473,7 @@ describe('SalesService', () => {
 
     it('should throw NotFoundException when order does not exist', async () => {
       const mockClient = {
-        salesOrder: { findUniqueOrThrow: jest.fn().mockRejectedValue(new Error('Not found')) },
+        salesOrder: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       prisma.getClient.mockReturnValue(mockClient);
 

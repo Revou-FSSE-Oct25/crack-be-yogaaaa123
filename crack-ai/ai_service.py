@@ -20,7 +20,9 @@ from openai import AsyncOpenAI
 
 from config import settings
 from tools import execute_tool as _execute_tool
-from logging_config import logger
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # ─── LLM Client (OpenAI-compatible: DeepSeek, OpenAI, Anthropic via proxy, etc.) ─
 client = AsyncOpenAI(

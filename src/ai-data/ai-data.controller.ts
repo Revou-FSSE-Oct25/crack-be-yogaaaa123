@@ -128,8 +128,9 @@ export class AiDataController {
         month_sales_amount: Number(monthSales._sum?.totalPrice || 0),
         low_stock_count: lowStockCount,
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -184,8 +185,9 @@ export class AiDataController {
         })),
         total: products.length,
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -254,8 +256,9 @@ export class AiDataController {
           };
         }),
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -323,8 +326,9 @@ export class AiDataController {
         })),
         total: products.length,
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -356,18 +360,25 @@ export class AiDataController {
     const take = Math.min(Math.max(parseInt(limit || '20', 10) || 20, 1), 50);
 
     try {
-      const where: any = {};
-      if (startDate) where.createdAt = { ...(where.createdAt || {}), gte: new Date(startDate) };
-      if (endDate) where.createdAt = { ...(where.createdAt || {}), lte: new Date(endDate) };
+      const whereSalesReport: Prisma.SalesOrderWhereInput = {};
+      if (startDate) {
+        whereSalesReport.createdAt = { gte: new Date(startDate) };
+      }
+      if (endDate) {
+        whereSalesReport.createdAt = {
+          ...(whereSalesReport.createdAt as object || {}),
+          lte: new Date(endDate),
+        };
+      }
 
       // Staff only sees their own orders
       if (role === 'STAFF') {
-        where.userId = userId;
+        whereSalesReport.userId = userId;
       }
 
       const [orders, aggregate] = await Promise.all([
         prisma.salesOrder.findMany({
-          where,
+          where: whereSalesReport,
           take,
           orderBy: { createdAt: 'desc' },
           select: {
@@ -379,7 +390,7 @@ export class AiDataController {
           },
         }),
         prisma.salesOrder.aggregate({
-          where,
+          where: whereSalesReport,
           _sum: { totalPrice: true },
           _count: true,
         }),
@@ -396,8 +407,9 @@ export class AiDataController {
           date: o.createdAt,
         })),
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -429,12 +441,19 @@ export class AiDataController {
     const prisma = this.prisma.getClient(tenantId);
 
     try {
-      const where: any = {};
-      if (startDate) where.createdAt = { ...(where.createdAt || {}), gte: new Date(startDate) };
-      if (endDate) where.createdAt = { ...(where.createdAt || {}), lte: new Date(endDate) };
+      const whereProfitLoss: Prisma.SalesOrderWhereInput = {};
+      if (startDate) {
+        whereProfitLoss.createdAt = { gte: new Date(startDate) };
+      }
+      if (endDate) {
+        whereProfitLoss.createdAt = {
+          ...(whereProfitLoss.createdAt as object || {}),
+          lte: new Date(endDate),
+        };
+      }
 
       const aggregate = await prisma.salesOrder.aggregate({
-        where,
+        where: whereProfitLoss,
         _sum: { totalPrice: true, totalCogs: true, totalProfit: true },
         _count: true,
       });
@@ -451,8 +470,9 @@ export class AiDataController {
         net_profit: profit,
         profit_margin: `${margin}%`,
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -493,8 +513,9 @@ export class AiDataController {
           product_count: c._count.products,
         })),
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -541,8 +562,9 @@ export class AiDataController {
           product_count: s._count.products,
         })),
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 
@@ -586,8 +608,9 @@ export class AiDataController {
           role: u.role,
         })),
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      throw new InternalServerErrorException(err.message);
     }
   }
 }

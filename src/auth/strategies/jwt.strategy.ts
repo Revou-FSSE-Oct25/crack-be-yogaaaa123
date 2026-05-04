@@ -2,6 +2,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../../users/users.service';
+import { ROLES } from '../../common/constants/roles.constant';
 
 interface JwtPayload {
   sub: string;
@@ -26,12 +27,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    // SUPER_ADMIN users don't have a tenantId — validate differently
-    if (payload.isSuperAdmin || payload.role === 'SUPER_ADMIN') {
+    if (payload.isSuperAdmin || payload.role === ROLES.SUPER_ADMIN) {
       return {
         id: payload.sub,
         username: payload.username,
-        role: 'SUPER_ADMIN',
+        role: ROLES.SUPER_ADMIN,
         tenantId: '',
         isSuperAdmin: true,
       };

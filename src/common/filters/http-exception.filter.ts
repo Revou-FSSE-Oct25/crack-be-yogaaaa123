@@ -16,7 +16,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message:
         typeof exceptionResponse === 'string'
           ? exceptionResponse
-          : (exceptionResponse as any).message || exception.message,
+          : (exceptionResponse as Record<string, unknown>).message || exception.message,
       error: exception.name,
       timestamp: new Date().toISOString(),
     };

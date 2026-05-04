@@ -15,6 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { ROLES } from '../common/constants/roles.constant';
 import { AdminService } from './admin.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -36,12 +37,12 @@ import { ApiProperty } from '@nestjs/swagger';
 class AdminLoginDto {
   @ApiProperty({ example: 'superadmin@crack.com', description: 'Email super admin' })
   @IsEmail()
-  email: string;
+  email!: string;
 
   @ApiProperty({ example: 'SuperAdmin@123', description: 'Password super admin' })
   @IsString()
   @MinLength(8)
-  password: string;
+  password!: string;
 }
 
 // ── CONTROLLER ───────────────────────────────────────────────────────
@@ -95,11 +96,10 @@ Login khusus untuk Super Admin (developer/pemilik platform).
       throw new UnauthorizedException('Email atau password salah');
     }
 
-    // Generate JWT — role SUPER_ADMIN, tanpa tenantId
     const payload = {
       sub: admin.id,
       username: admin.email,
-      role: 'SUPER_ADMIN',
+      role: ROLES.SUPER_ADMIN,
       isSuperAdmin: true,
     };
 
@@ -119,7 +119,7 @@ Login khusus untuk Super Admin (developer/pemilik platform).
         id: admin.id,
         email: admin.email,
         name: admin.name,
-        role: 'SUPER_ADMIN',
+        role: ROLES.SUPER_ADMIN,
         isSuperAdmin: true,
       },
     };
@@ -129,7 +129,7 @@ Login khusus untuk Super Admin (developer/pemilik platform).
 
   @Get('tenants')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN' as any)
+    @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Daftar semua tenant (toko) — Super Admin only',
@@ -156,7 +156,7 @@ Mendapatkan daftar semua toko yang terdaftar di platform.
 
   @Get('tenants/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN' as any)
+    @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Detail tenant by ID — Super Admin only',
@@ -177,7 +177,7 @@ Detail satu toko. Hanya menampilkan data platform:
 
   @Delete('tenants/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN' as any)
+    @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Hapus tenant (soft delete) — Super Admin only',
@@ -200,7 +200,7 @@ Soft delete tenant beserta semua data terkait:
 
   @Get('stats')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN' as any)
+    @Roles(ROLES.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Statistik platform — Super Admin only',
