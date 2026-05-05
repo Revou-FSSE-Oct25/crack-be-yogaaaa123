@@ -28,47 +28,77 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ auth: { ttl: 60000, limit: 5 } })
   @ApiOperation({
-    summary: 'Register toko baru — auto-create tenant + admin user',
+    summary: '📝 Register toko baru',
     description: `
-Daftarkan toko baru. Sistem akan otomatis:
-1. Membuat Platform User (untuk login global / recovery)
-2. Membuat Tenant (toko) baru
-3. Membuat Tenant Member (hubungan platform user ke toko sebagai OWNER)
-4. Membuat Tenant User (admin toko) dengan role ADMIN
-5. Mengembalikan JWT token langsung (langsung login)
+Mendaftarkan toko baru secara otomatis dengan fitur:
 
-**Security:**
-- Password minimal 8 karakter, harus ada huruf besar, huruf kecil, dan angka
+### 🔄 Auto-Create:
+1. ✅ **Platform User** - Akun global untuk login/recovery
+2. ✅ **Tenant** - Data toko baru dengan slug unik
+3. ✅ **Tenant Member** - Relasi user sebagai OWNER
+4. ✅ **Tenant User** - Admin toko dengan role ADMIN
+5. ✅ **Auto Login** - HttpOnly cookies langsung di-set
+
+### 🔒 Security Features:
+- Password minimal 8 karakter (huruf besar, kecil, angka)
 - Username hanya huruf/angka/underscore
-- Email unique — tidak bisa daftar 2x dengan email sama
-- Nama toko unique — tidak bisa daftar 2x dengan nama toko sama
-- Rate limit: 5 percobaan per 60 detik (mencegah spam registrasi)
-- Password di-hash dengan bcrypt cost factor 12
-- Semua operasi dalam 1 transaksi atomik (gagal satu, gagal semua)
+- Email unique (tidak bisa daftar 2x)
+- Nama toko unique
+- Password di-hash bcrypt (cost 12)
+- Transaksi atomik (gagal satu = gagal semua)
+
+### ⚡ Rate Limit:
+5 percobaan per 60 detik per IP
     `,
   })
-  @ApiBody({ type: RegisterDto })
+  @ApiBody({ 
+    type: RegisterDto,
+    examples: {
+      example1: {
+        summary: 'Contoh registrasi toko',
+        value: {
+          storeName: 'Toko Sembako Makmur',
+          username: 'admin_toko1',
+          email: 'admin@tokosembako.com',
+          password: 'SecurePass123',
+          displayName: 'Admin Toko'
+        }
+      }
+    }
+  })
   @ApiResponse({
     status: 201,
-    description: 'Registrasi berhasil',
+    description: '✅ Registrasi berhasil',
     schema: {
       example: {
-        message: 'Registrasi berhasil',
-        access_token: '<access_token>',
-        refresh_token: '<refresh_token>',
-        expires_in: 900,
-        user: {
-          id: 'uuid-user-1',
-          username: 'admin',
-          role: 'ADMIN',
-          tenantId: 'uuid-tenant-1',
-          storeName: 'Toko Sembako Makmur',
+        statusCode: 201,
+        message: 'Success',
+        data: {
+          message: 'Registrasi berhasil',
+          user: {
+            id: '550e8400-e29b-41d4-a716-446655440000',
+            username: 'admin_toko1',
+            role: 'ADMIN',
+            tenantId: '660e8400-e29b-41d4-a716-446655440001',
+            storeName: 'Toko Sembako Makmur',
+          },
         },
+        timestamp: '2026-05-05T10:30:00.000Z',
       },
     },
   })
-  @ApiResponse({ status: 409, description: 'Conflict — email/username/nama toko sudah terdaftar' })
-  @ApiResponse({ status: 429, description: 'Too Many Requests' })
+  @ApiResponse({ 
+    status: 400, 
+    description: '❌ Validation error - Password tidak memenuhi requirements' 
+  })
+  @ApiResponse({ 
+    status: 409, 
+    description: '⚠️ Conflict - Email/username/nama toko sudah terdaftar' 
+  })
+  @ApiResponse({ 
+    status: 429, 
+    description: '🚫 Too Many Requests - Rate limit exceeded' 
+  })
   async register(@Body() registerDto: RegisterDto, @Res({ passthrough: true }) res: any) {
     const result = await this.authService.register(registerDto);
     const cookieOpts = this.getCookieOptions();
@@ -83,11 +113,65 @@ Daftarkan toko baru. Sistem akan otomatis:
   @Public()
   @Get('csrf-token')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get CSRF token (double-submit cookie pattern)' })
+  @ApiOperation({ 
+    summary: '🛡️ Get CSRF token',
+    description: `
+Mendapatkan CSRF token untuk proteksi terhadap Cross-Site Request Forgery.
+
+### 🍪 Double-Submit Cookie Pattern:
+1. Server mengirim CSRF token via cookie (non-HttpOnly)
+2. Client membaca dari \`document.cookie\`
+3. Client kirim via header \`X-CSRF-Token\` untuk mutations
+
+### ⚙️ Kapan diperlukan?
+CSRF token **WAJIB** untuk:
+- ✅ POST requests
+- ✅ PUT requests
+- ✅ PATCH requests
+- ✅ DELETE requests
+
+### ❌ Tidak diperlukan untuk:
+- GET requests
+- HEAD requests
+- OPTIONS requests
+- Public endpoints (login, register, refresh)
+
+### 💡 Usage:
+\`\`\`javascript
+// 1. Fetch CSRF token
+const response = await fetch('/auth/csrf-token', { credentials: 'include' });
+const { csrf_token } = await response.json();
+
+// 2. Include in mutation requests
+fetch('/products', {
+  method: 'POST',
+  headers: { 'X-CSRF-Token': csrf_token },
+  credentials: 'include',
+  body: JSON.stringify(data)
+});
+\`\`\`
+    `
+  })
   @ApiResponse({
     status: 200,
-    description: 'CSRF token generated and set as non-httpOnly cookie',
-    schema: { example: { csrf_token: 'abc123...' } },
+    description: '✅ CSRF token generated',
+    headers: {
+      'Set-Cookie': {
+        description: 'Non-HttpOnly CSRF token cookie',
+        schema: {
+          type: 'string',
+          example: 'csrf_token=abc123...; Path=/; SameSite=Lax'
+        }
+      }
+    },
+    schema: { 
+      example: {
+        statusCode: 200,
+        message: 'Success',
+        data: { csrf_token: 'a1b2c3d4e5f6...' },
+        timestamp: '2026-05-05T10:30:00.000Z'
+      }
+    },
   })
   getCsrfToken(@Res({ passthrough: true }) res: any) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -106,44 +190,85 @@ Daftarkan toko baru. Sistem akan otomatis:
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { ttl: 60000, limit: 10 } })
   @ApiOperation({
-    summary: 'User login — mendapatkan JWT access + refresh token',
+    summary: '🔑 User login',
     description: `
-Login dengan username dan password.
+Login dengan username dan password untuk mendapatkan akses ke API.
 
-**Cara kerja:**
-1. Kirim username + password
+### 🍪 Cookies yang di-set:
+- **auth_token** - JWT access token (15 menit)
+- **refresh_token** - Refresh token (7 hari)
+
+### 📝 Cara Kerja:
+1. Kirim \`username\` dan \`password\`
 2. Server validasi kredensial
-3. Dapatkan access_token (JWT, berlaku 15 menit) + refresh_token (berlaku 7 hari)
-4. Gunakan access_token di header Authorization
-5. Saat access_token expire, gunakan /auth/refresh untuk dapatkan token baru
+3. HttpOnly cookies otomatis di-set
+4. Gunakan cookies untuk akses API
 
-**Akun default (seed):**
-- Admin: \`admin1\` / \`password123\`
-- Staff: \`staff1\` / \`password123\`
+### 🔐 Default Accounts (untuk testing):
+| Role | Username | Password |
+|------|----------|----------|
+| Admin | \`admin1\` | \`password123\` |
+| Staff | \`staff1\` | \`password123\` |
 
-**Rate Limit:** 10 percobaan per 60 detik (mencegah brute force)
+### ⚠️ Rate Limit:
+10 percoboan per 60 detik per IP
+
+### 🚫 Account Locking:
+Akun terkunci 30 menit setelah 5 failed attempts
     `,
   })
-  @ApiBody({ type: LoginDto })
+  @ApiBody({ 
+    type: LoginDto,
+    examples: {
+      example1: {
+        summary: 'Login sebagai admin',
+        value: {
+          username: 'admin1',
+          password: 'password123'
+        }
+      }
+    }
+  })
   @ApiResponse({
     status: 200,
-    description: 'Login berhasil',
+    description: '✅ Login berhasil - Cookies set',
+    headers: {
+      'Set-Cookie': {
+        description: 'HttpOnly cookies for authentication',
+        schema: {
+          type: 'string',
+          example: 'auth_token=eyJhbGc...; Path=/; HttpOnly; SameSite=Lax'
+        }
+      }
+    },
     schema: {
       example: {
-        access_token: '<access_token>',
-        refresh_token: '<refresh_token>',
-        expires_in: 900,
-        user: {
-          id: 'uuid-user-1',
-          username: 'admin1',
-          email: 'admin@example.com',
-          role: 'ADMIN',
+        statusCode: 200,
+        message: 'Success',
+        data: {
+          user: {
+            id: '550e8400-e29b-41d4-a716-446655440000',
+            username: 'admin1',
+            role: 'ADMIN',
+            tenantId: '660e8400-e29b-41d4-a716-446655440001',
+          },
         },
+        timestamp: '2026-05-05T10:30:00.000Z',
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 429, description: 'Too Many Requests' })
+  @ApiResponse({ 
+    status: 401, 
+    description: '❌ Unauthorized - Invalid credentials' 
+  })
+  @ApiResponse({ 
+    status: 403, 
+    description: '🔒 Forbidden - Account locked' 
+  })
+  @ApiResponse({ 
+    status: 429, 
+    description: '🚫 Too Many Requests - Rate limit exceeded' 
+  })
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: any) {
     const result = await this.authService.login(loginDto);
     const cookieOpts = this.getCookieOptions();

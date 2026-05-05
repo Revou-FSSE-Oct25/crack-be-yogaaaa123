@@ -101,12 +101,101 @@ async function bootstrap() {
   // ═══════════════════════════════════════════════════════════════════
   const config = new DocumentBuilder()
     .setTitle('CrackPOS Inventory API')
-    .setDescription('Enterprise Inventory Management API')
-    .setVersion('2.0')
-    .addBearerAuth()
+    .setDescription(`
+# 🔐 CrackPOS Inventory Management API
+
+Enterprise-grade inventory management system dengan multi-tenant architecture.
+
+## 📋 Features
+
+- **Multi-Tenant Architecture** - Setiap toko memiliki data yang terisolasi
+- **Role-Based Access Control** - Admin, Staff, Super Admin
+- **HttpOnly Cookie Auth** - Secure authentication dengan JWT tokens
+- **CSRF Protection** - Double-submit cookie pattern
+- **Rate Limiting** - Protection against brute force attacks
+- **Audit Logging** - Automatic activity tracking
+
+## 🔑 Authentication
+
+API ini menggunakan **HttpOnly Cookie-based Authentication**:
+
+1. **Login:** \`POST /auth/login\` → Mendapatkan cookies \`auth_token\` dan \`refresh_token\`
+2. **CSRF:** \`GET /auth/csrf-token\` → Mendapatkan CSRF token untuk mutations
+3. **Protected Routes:** Cookies dikirim otomatis, tambahkan header \`X-CSRF-Token\` untuk POST/PUT/PATCH/DELETE
+
+## 📚 Response Format
+
+Semua response menggunakan format:
+\`\`\`json
+{
+  "statusCode": 200,
+  "message": "Success",
+  "data": { ... },
+  "timestamp": "2026-05-05T..."
+}
+\`\`\`
+
+## 🚀 Rate Limits
+
+- **Global:** 60 requests per 60 seconds per tenant
+- **Auth endpoints:** 10 requests per 60 seconds per IP
+
+## 📖 Quick Start
+
+1. Register toko baru: \`POST /auth/register\`
+2. Login: \`POST /auth/login\`
+3. Get CSRF token: \`GET /auth/csrf-token\`
+4. Use API dengan cookies + CSRF token
+
+## 🛡️ Security
+
+- Password di-hash dengan bcrypt (cost 12)
+- Refresh token rotation
+- Account locking setelah 5 failed attempts
+- All mutations logged untuk audit trail
+    `)
+    .setVersion('2.0.0')
+    .setContact('CrackPOS Team', 'https://crackpos.com', 'support@crackpos.com')
+    .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+    .addServer('http://localhost:3000', 'Development Server')
+    .addServer('http://localhost:8080', 'Local Production')
+    .addServer('https://api.crackpos.com', 'Production Server')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'JWT Authorization header (fallback untuk cookie auth)',
+      },
+      'bearer-auth',
+    )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'X-CSRF-Token',
+        in: 'header',
+        description: 'CSRF token untuk POST/PUT/PATCH/DELETE requests',
+      },
+      'csrf-token',
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  SwaggerModule.setup('api', app, document, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'CrackPOS API Docs',
+    customfavIcon: '/favicon.ico',
+    swaggerOptions: {
+      persistAuthorization: true,
+      docExpansion: 'none',
+      filter: true,
+      showExtensions: true,
+      showCommonExtensions: true,
+      syntaxHighlight: {
+        activate: true,
+        theme: 'monokai',
+      },
+    },
+  });
 
   // ═══════════════════════════════════════════════════════════════════
   // SERVE
