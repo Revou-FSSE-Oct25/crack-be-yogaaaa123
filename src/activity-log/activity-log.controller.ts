@@ -5,6 +5,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { TenantRole } from '@prisma/client';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 
 @ApiTags('activity-logs')
 @ApiBearerAuth()
@@ -51,8 +53,13 @@ Mendapatkan riwayat aktivitas semua user di sistem.
       },
     },
   })
-  findAll(@Query('skip') skip?: string, @Query('take') take?: string) {
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
     return this.activityLogService.findAll(
+      user.tenantId,
       skip !== undefined ? parseInt(skip, 10) : undefined,
       take !== undefined ? parseInt(take, 10) : undefined,
     );
@@ -61,7 +68,7 @@ Mendapatkan riwayat aktivitas semua user di sistem.
   @Get(':id')
   @ApiOperation({ summary: 'Detail activity log by ID' })
   @ApiResponse({ status: 200, description: 'Detail activity log' })
-  findOne(@Param('id') id: string) {
-    return this.activityLogService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.activityLogService.findOne(id, user.tenantId);
   }
 }

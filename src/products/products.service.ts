@@ -10,7 +10,8 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   create(createProductDto: CreateProductDto, tenantId: string): Promise<Product> {
-    return this.prisma.product.create({
+    const prisma = this.prisma.getClient(tenantId);
+    return prisma.product.create({
       data: {
         ...createProductDto,
         tenantId,

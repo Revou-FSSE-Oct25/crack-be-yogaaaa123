@@ -46,10 +46,11 @@ export class SalesService {
   private async buildOrderItemsData(
     items: SalesOrderItem[],
     tx: Prisma.TransactionClient,
+    tenantId: string,
   ): Promise<OrderItemsBuildResult> {
     const productIds = items.map((i) => i.productId);
     const products = await tx.product.findMany({
-      where: { id: { in: productIds } },
+      where: { id: { in: productIds }, tenantId },
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
 
@@ -102,19 +103,24 @@ export class SalesService {
   ): Promise<void> {
     for (const item of items) {
       // Atomic stock validation: only decrement if stock is sufficient
-      const updatedProduct = await tx.product.update({
-        where: {
-          id: item.productId,
-          stockQuantity: { gte: item.quantity },
-        },
-        data: { stockQuantity: { decrement: item.quantity } },
-        select: { stockQuantity: true, reorderLevel: true, name: true },
-      });
-
-      if (!updatedProduct) {
-        throw new BadRequestException(
-          `Insufficient stock for product ID ${item.productId}. Requested: ${item.quantity}`,
-        );
+      let updatedProduct;
+      try {
+        updatedProduct = await tx.product.update({
+          where: {
+            id: item.productId,
+            tenantId: tenantId,
+            stockQuantity: { gte: item.quantity },
+          },
+          data: { stockQuantity: { decrement: item.quantity } },
+          select: { stockQuantity: true, reorderLevel: true, name: true },
+        });
+      } catch (error: any) {
+        if (error.code === 'P2025') {
+          throw new BadRequestException(
+            `Insufficient stock or product not found for ID ${item.productId}. Requested: ${item.quantity}`,
+          );
+        }
+        throw error;
       }
 
       // Create OUT stock transaction
@@ -149,7 +155,7 @@ export class SalesService {
       // Build order items data (COGS, profit, price) — pre-check stock omitted,
       // pessimistic check in processStockOut is sufficient and more atomic
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
-        await this.buildOrderItemsData(data.items, tx);
+        await this.buildOrderItemsData(data.items, tx, data.tenantId);
 
       const salesOrder = await tx.salesOrder.create({
         data: {
@@ -182,7 +188,7 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       // Build order items data — no stock processing since status is PENDING
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
-        await this.buildOrderItemsData(data.items, tx);
+        await this.buildOrderItemsData(data.items, tx, data.tenantId);
 
       return tx.salesOrder.create({
         data: {
@@ -204,14 +210,14 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       // Atomic status check + update — prevents race conditions from concurrent requests.
       const salesOrder = await tx.salesOrder.findFirst({
-        where: { id: orderId, status: 'PENDING' },
+        where: { id: orderId, status: 'PENDING', tenantId },
         include: { items: true },
       });
 
       if (!salesOrder) {
         // Check if it exists at all for a more descriptive error
         const exists = await tx.salesOrder.findFirst({
-          where: { id: orderId },
+          where: { id: orderId, tenantId },
           select: { id: true, status: true },
         });
         if (!exists) {
@@ -313,12 +319,13 @@ export class SalesService {
    * Cancel a PENDING sales order.
    * Only PENDING orders can be cancelled — no stock impact.
    */
-  async cancelSalesOrder(orderId: string, _tenantId: string) {
+  async cancelSalesOrder(orderId: string, tenantId: string) {
     // Atomic check-and-set: only update if status is still PENDING
     const result = await this.prisma.$transaction(async (tx) => {
       const updateResult = await tx.salesOrder.updateMany({
         where: {
           id: orderId,
+          tenantId, // ← Enforce tenant scope
           status: 'PENDING', // ← Atomic condition: only PENDING orders
         },
         data: { status: 'CANCELLED' },
@@ -327,7 +334,7 @@ export class SalesService {
       if (updateResult.count === 0) {
         // updateMany didn't update anything — check why
         const exists = await tx.salesOrder.findFirst({
-          where: { id: orderId },
+          where: { id: orderId, tenantId },
           select: { id: true, status: true },
         });
 
@@ -342,7 +349,7 @@ export class SalesService {
 
       // Fetch and return the updated order for the response
       const updated = await tx.salesOrder.findFirst({
-        where: { id: orderId },
+        where: { id: orderId, tenantId },
       });
       if (!updated) {
         throw new NotFoundException(`Sales Order ${orderId} not found after cancellation`);

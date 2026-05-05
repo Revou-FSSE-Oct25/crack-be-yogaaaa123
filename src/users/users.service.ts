@@ -73,17 +73,20 @@ export class UsersService {
 
   async findByUsername(username: string, tenantId?: string) {
     // SECURITY: filter soft-deleted users — they must not be able to login
-    return this.prisma.tenantUser.findFirst({
+    const prisma = tenantId ? this.prisma.getClient(tenantId) : this.prisma;
+    return prisma.tenantUser.findFirst({
       where: { username, deletedAt: null, ...(tenantId ? { tenantId } : {}) },
     });
   }
 
-  async findByUsernameOrEmail(usernameOrEmail: string) {
+  async findByUsernameOrEmail(usernameOrEmail: string, tenantId?: string) {
     // SECURITY: filter soft-deleted users — they must not be able to login
-    return this.prisma.tenantUser.findFirst({
+    const prisma = tenantId ? this.prisma.getClient(tenantId) : this.prisma;
+    return prisma.tenantUser.findFirst({
       where: {
         username: usernameOrEmail,
         deletedAt: null,
+        ...(tenantId ? { tenantId } : {}),
       },
     });
   }
@@ -102,7 +105,7 @@ export class UsersService {
     const updateData: { role?: UpdateUserDto['role'] } = {};
     if (updateUserDto.role !== undefined) updateData.role = updateUserDto.role;
 
-    const updatedUser = await this.prisma.tenantUser.update({
+    const updatedUser = await prisma.tenantUser.update({
       where: { id },
       data: updateData,
     });
@@ -124,7 +127,7 @@ export class UsersService {
     }
 
     // Soft delete
-    return this.prisma.tenantUser.update({
+    return prisma.tenantUser.update({
       where: { id },
       data: { deletedAt: new Date() },
       select: {

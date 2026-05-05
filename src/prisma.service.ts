@@ -32,6 +32,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     super({ adapter });
   }
 
+  private clientCache = new Map<string, PrismaClient>();
+
   /**
    * Get a tenant-aware Prisma client that automatically:
    * - Filters by `tenantId` for tenant-scoped models
@@ -40,8 +42,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * @param tenantId - The tenant ID to scope queries to
    * @returns Extended Prisma client with automatic filters
    */
-  getClient(tenantId?: string) {
-    return this.$extends(createTenantSoftDeleteExtension(tenantId));
+  getClient(tenantId?: string): PrismaClient {
+    const key = tenantId || 'GLOBAL';
+    if (!this.clientCache.has(key)) {
+      this.clientCache.set(
+        key,
+        this.$extends(createTenantSoftDeleteExtension(tenantId)) as unknown as PrismaClient,
+      );
+    }
+    return this.clientCache.get(key)!;
   }
 
   async onModuleInit() {

@@ -45,22 +45,27 @@ export class InventoryService {
     return this.prisma.$transaction(async (tx) => {
       // Atomic stock validation: only decrement if stock is sufficient
       if (operation === 'decrement') {
-        const updatedProduct = await tx.product.update({
-          where: {
-            id: productId,
-            stockQuantity: { gte: absoluteChange },
-          },
-          data: {
-            stockQuantity: {
-              decrement: absoluteChange,
+        let updatedProduct;
+        try {
+          updatedProduct = await tx.product.update({
+            where: {
+              id: productId,
+              tenantId,
+              stockQuantity: { gte: absoluteChange },
             },
-          },
-        });
-
-        if (!updatedProduct) {
-          throw new BadRequestException(
-            `Insufficient stock for product ID ${productId}. Cannot decrement by ${absoluteChange}.`,
-          );
+            data: {
+              stockQuantity: {
+                decrement: absoluteChange,
+              },
+            },
+          });
+        } catch (error: any) {
+          if (error.code === 'P2025') {
+            throw new BadRequestException(
+              `Insufficient stock or product not found for ID ${productId}. Cannot decrement by ${absoluteChange}.`,
+            );
+          }
+          throw error;
         }
 
         // Create stock transaction
@@ -81,7 +86,7 @@ export class InventoryService {
 
       // For increment operations, just update directly
       const updatedProduct = await tx.product.update({
-        where: { id: productId },
+        where: { id: productId, tenantId },
         data: {
           stockQuantity: {
             increment: absoluteChange,

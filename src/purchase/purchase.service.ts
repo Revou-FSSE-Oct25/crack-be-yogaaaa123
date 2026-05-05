@@ -43,7 +43,7 @@ export class PurchaseService {
   ): Promise<void> {
     const productIds = items.map((i) => i.productId);
     const products = await tx.product.findMany({
-      where: { id: { in: productIds } },
+      where: { id: { in: productIds }, tenantId },
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
 
@@ -75,7 +75,7 @@ export class PurchaseService {
       });
 
       await tx.product.update({
-        where: { id: item.productId },
+        where: { id: item.productId, tenantId },
         data: {
           stockQuantity: { increment: item.quantity },
           averageCost: newAverageCost,
@@ -325,11 +325,12 @@ export class PurchaseService {
     };
   }
 
-  async cancelPurchaseOrder(orderId: string, _tenantId: string) {
+  async cancelPurchaseOrder(orderId: string, tenantId: string) {
     return this.prisma.$transaction(async (tx) => {
       const updateResult = await tx.purchaseOrder.updateMany({
         where: {
           id: orderId,
+          tenantId,
           status: 'PENDING',
         },
         data: { status: 'CANCELLED' },
@@ -337,7 +338,7 @@ export class PurchaseService {
 
       if (updateResult.count === 0) {
         const exists = await tx.purchaseOrder.findFirst({
-          where: { id: orderId },
+          where: { id: orderId, tenantId },
           select: { id: true, status: true },
         });
 
@@ -351,7 +352,7 @@ export class PurchaseService {
       }
 
       const updated = await tx.purchaseOrder.findFirst({
-        where: { id: orderId },
+        where: { id: orderId, tenantId },
       });
       if (!updated) {
         throw new NotFoundException(`Purchase Order ${orderId} not found after cancellation`);

@@ -26,9 +26,10 @@ export class ActivityLogService {
     });
   }
 
-  async findAll(skip?: number, take?: number) {
+  async findAll(tenantId: string, skip?: number, take?: number) {
+    const prisma = this.prisma.getClient(tenantId);
     const [data, total] = await Promise.all([
-      this.prisma.activityLog.findMany({
+      prisma.activityLog.findMany({
         skip,
         take: take ?? 50,
         orderBy: { createdAt: 'desc' },
@@ -38,14 +39,15 @@ export class ActivityLogService {
           },
         },
       }),
-      this.prisma.activityLog.count(),
+      prisma.activityLog.count(),
     ]);
 
     return { data, total };
   }
 
-  async findOne(id: string) {
-    const result = await this.prisma.activityLog.findFirst({
+  async findOne(id: string, tenantId: string) {
+    const prisma = this.prisma.getClient(tenantId);
+    const result = await prisma.activityLog.findFirst({
       where: { id },
       include: {
         user: {

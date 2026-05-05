@@ -19,7 +19,6 @@ import { ROLES } from '../common/constants/roles.constant';
 import { AdminService } from './admin.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto';
 import { PrismaService } from '../prisma.service';
 import {
   ApiTags,
@@ -107,13 +106,8 @@ Login khusus untuk Super Admin (developer/pemilik platform).
       expiresIn: this.ACCESS_TOKEN_EXPIRES,
     });
 
-    const refresh_token = crypto.randomBytes(40).toString('hex');
-    const refreshExpiresAt = new Date();
-    refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
-
     return {
       access_token,
-      refresh_token,
       expires_in: 900,
       user: {
         id: admin.id,

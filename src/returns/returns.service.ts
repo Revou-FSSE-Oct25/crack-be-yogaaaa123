@@ -33,7 +33,7 @@ export class ReturnsService {
     }
 
     // 2. Validate return items
-    const orderItemsMap = new Map<string, OrderItem>(salesOrder.items.map((i) => [i.id, i]));
+    const orderItemsMap = new Map<string, OrderItem>(salesOrder.items.map((i: OrderItem) => [i.id, i]));
     let totalRefund = new Prisma.Decimal(0);
     const returnItemsToCreate: ReturnItemToCreate[] = [];
 
@@ -98,7 +98,7 @@ export class ReturnsService {
 
         // Add stock back to product
         await tx.product.update({
-          where: { id: returnItem.productId },
+          where: { id: returnItem.productId, tenantId },
           data: { stockQuantity: { increment: returnItem.quantity } },
         });
 
@@ -133,7 +133,7 @@ export class ReturnsService {
       }
 
       await tx.salesOrder.update({
-        where: { id: data.salesOrderId },
+        where: { id: data.salesOrderId, tenantId },
         data: {
           totalProfit: { decrement: returnedProfitMargin },
           totalCogs: { decrement: returnedCogs },
