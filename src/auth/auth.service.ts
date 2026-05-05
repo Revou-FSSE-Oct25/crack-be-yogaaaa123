@@ -94,9 +94,8 @@ export class AuthService {
     this.logger.log(`User ${user.username} logged in successfully`);
 
     return {
-      access_token,
-      refresh_token: rawRefreshToken,
-      expires_in: 900, // 15 menit dalam detik
+      accessToken: access_token,
+      refreshToken: rawRefreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -161,9 +160,8 @@ export class AuthService {
     });
 
     return {
-      access_token: newAccessToken,
-      refresh_token: newRawToken,
-      expires_in: 900,
+      accessToken: newAccessToken,
+      refreshToken: newRawToken,
     };
   }
 
@@ -272,9 +270,8 @@ export class AuthService {
 
     return {
       message: 'Registrasi berhasil',
-      access_token,
-      refresh_token: rawRefreshToken,
-      expires_in: 900,
+      accessToken: access_token,
+      refreshToken: rawRefreshToken,
       user: {
         id: result.tenantUser.id,
         username: result.tenantUser.username,

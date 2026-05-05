@@ -71,7 +71,7 @@ describe('AuthService', () => {
   describe('login', () => {
     const loginDto = { username: 'admin1', password: 'password123' };
 
-    it('should return access_token and user on valid credentials', async () => {
+    it('should return accessToken and user on valid credentials', async () => {
       const hashedPassword = await bcrypt.hash('password123', 10);
       const mockUser = createMockUser({ passwordHash: hashedPassword });
 
@@ -79,7 +79,8 @@ describe('AuthService', () => {
 
       const result = await service.login(loginDto);
 
-      expect(result.access_token).toBe('mock.jwt.token');
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(result.refreshToken).toBeDefined();
       expect(result.user.username).toBe('admin1');
       expect(result.user.role).toBe('ADMIN');
       expect(result.user.tenantId).toBe('tenant-uuid-1');
@@ -144,11 +145,11 @@ describe('AuthService', () => {
 
       const result = await service.login(loginDto);
 
-      expect(result.refresh_token).toHaveLength(80);
+      expect(result.refreshToken).toHaveLength(80);
       const storedToken = prisma.refreshToken.create.mock.calls[0][0].data.token;
       expect(storedToken).toHaveLength(64);
-      expect(storedToken).not.toBe(result.refresh_token);
-      const expectedHash = crypto.createHash('sha256').update(result.refresh_token).digest('hex');
+      expect(storedToken).not.toBe(result.refreshToken);
+      const expectedHash = crypto.createHash('sha256').update(result.refreshToken).digest('hex');
       expect(storedToken).toBe(expectedHash);
     });
 
@@ -192,7 +193,7 @@ describe('AuthService', () => {
       usersService.findByUsernameOrEmail.mockResolvedValue(mockUser);
 
       const result = await service.login(loginDto);
-      expect(result.access_token).toBe('mock.jwt.token');
+      expect(result.accessToken).toBe('mock.jwt.token');
     });
 
     it('should track failed attempts on wrong password', async () => {
@@ -260,9 +261,8 @@ describe('AuthService', () => {
 
       const result = await service.refreshAccessToken(rawToken);
 
-      expect(result.access_token).toBe('mock.jwt.token');
-      expect(result.refresh_token).toBeDefined();
-      expect(result.expires_in).toBe(900);
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(result.refreshToken).toBeDefined();
       expect(prisma.refreshToken.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'rt-1' },

@@ -1,12 +1,15 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   HttpCode,
   HttpStatus,
-  Headers,
+  Req,
+  Res,
   UnauthorizedException,
 } from '@nestjs/common';
+import * as crypto from 'node:crypto';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -66,8 +69,36 @@ Daftarkan toko baru. Sistem akan otomatis:
   })
   @ApiResponse({ status: 409, description: 'Conflict — email/username/nama toko sudah terdaftar' })
   @ApiResponse({ status: 429, description: 'Too Many Requests' })
-  register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+  async register(@Body() registerDto: RegisterDto, @Res({ passthrough: true }) res: any) {
+    const result = await this.authService.register(registerDto);
+    const cookieOpts = this.getCookieOptions();
+    res.cookie('auth_token', result.accessToken, { ...cookieOpts, maxAge: 15 * 60 * 1000 });
+    res.cookie('refresh_token', result.refreshToken, {
+      ...cookieOpts,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return { message: result.message, user: result.user };
+  }
+
+  @Public()
+  @Get('csrf-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get CSRF token (double-submit cookie pattern)' })
+  @ApiResponse({
+    status: 200,
+    description: 'CSRF token generated and set as non-httpOnly cookie',
+    schema: { example: { csrf_token: 'abc123...' } },
+  })
+  getCsrfToken(@Res({ passthrough: true }) res: any) {
+    const token = crypto.randomBytes(32).toString('hex');
+    res.cookie('csrf_token', token, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    return { csrf_token: token };
   }
 
   @Public()
@@ -113,8 +144,15 @@ Login dengan username dan password.
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 429, description: 'Too Many Requests' })
-  login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: any) {
+    const result = await this.authService.login(loginDto);
+    const cookieOpts = this.getCookieOptions();
+    res.cookie('auth_token', result.accessToken, { ...cookieOpts, maxAge: 15 * 60 * 1000 });
+    res.cookie('refresh_token', result.refreshToken, {
+      ...cookieOpts,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return { user: result.user };
   }
 
   @Public()
@@ -136,11 +174,19 @@ Rate limit: 5 requests per 60 detik.
   @Throttle({ refresh: { ttl: 60000, limit: 5 } })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
-  async refresh(@Headers('x-refresh-token') refreshToken: string) {
+  async refresh(@Req() req: any, @Res({ passthrough: true }) res: any) {
+    const refreshToken = req.cookies?.refresh_token;
     if (!refreshToken) {
-      throw new UnauthorizedException('Refresh token is required in x-refresh-token header');
+      throw new UnauthorizedException('Refresh token is required in cookie');
     }
-    return this.authService.refreshAccessToken(refreshToken);
+    const result = await this.authService.refreshAccessToken(refreshToken);
+    const cookieOpts = this.getCookieOptions();
+    res.cookie('auth_token', result.accessToken, { ...cookieOpts, maxAge: 15 * 60 * 1000 });
+    res.cookie('refresh_token', result.refreshToken, {
+      ...cookieOpts,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return { message: 'Token refreshed' };
   }
 
   @Post('logout')
@@ -152,7 +198,18 @@ Rate limit: 5 requests per 60 detik.
   })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async logout(@CurrentUser('id') userId: string) {
+  async logout(@CurrentUser('id') userId: string, @Res({ passthrough: true }) res: any) {
+    res.clearCookie('auth_token', { path: '/' });
+    res.clearCookie('refresh_token', { path: '/' });
     return this.authService.logout(userId);
+  }
+
+  private getCookieOptions() {
+    return {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+      path: '/',
+    };
   }
 }

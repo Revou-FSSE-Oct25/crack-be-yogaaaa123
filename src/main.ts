@@ -46,6 +46,12 @@ async function bootstrap() {
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // COOKIE PARSER — parse cookies from request headers
+  // ═══════════════════════════════════════════════════════════════════
+  const cookieParser = require('cookie-parser');
+  app.use(cookieParser());
+
+  // ═══════════════════════════════════════════════════════════════════
   // HELMET — security headers (XSS, clickjacking, MIME sniffing, etc.)
   // ═══════════════════════════════════════════════════════════════════
   app.use(helmet());
@@ -60,7 +66,7 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token', 'x-csrf-token'],
     credentials: true,
   });
 

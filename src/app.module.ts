@@ -24,6 +24,7 @@ import { PrismaService } from './prisma.service';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { TenantThrottlerGuard } from './common/guards/tenant-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { CsrfGuard } from './common/guards/csrf.guard';
 import { createWinstonLoggerOptions } from './logger.config';
 
 @Module({
@@ -75,6 +76,11 @@ import { createWinstonLoggerOptions } from './logger.config';
     {
       provide: APP_GUARD,
       useClass: TenantThrottlerGuard,
+    },
+    // CSRF Double-Submit Cookie Protection — skips @Public() routes
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
     },
     // Global Audit Log Interceptor — automatically logs all mutations
     {

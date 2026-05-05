@@ -470,6 +470,7 @@ async def chat(
             tools=_get_tools(),
             tool_choice="auto",
             temperature=0.0,
+            timeout=30.0,  # Add timeout to prevent hanging
             **extra_kwargs,
         )
 

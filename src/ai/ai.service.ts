@@ -81,20 +81,21 @@ export class AiService {
 
     this.logger.log(`Proxying chat to AI service [user=${user?.username || 'unknown'}]: ${url}`);
 
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post<AiChatResponse>(
-          url,
-          { message, history: transformedHistory },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Internal-API-Key': this.internalApiKey,
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        ),
-      );
+     try {
+       const response = await firstValueFrom(
+         this.httpService.post<AiChatResponse>(
+           url,
+           { message, history: transformedHistory },
+           {
+             headers: {
+               'Content-Type': 'application/json',
+               'X-Internal-API-Key': this.internalApiKey,
+               Authorization: `Bearer ${token}`,
+             },
+             timeout: 30000, // 30 seconds timeout for AI service request
+           },
+         ),
+       );
 
       return response.data;
     } catch (error: unknown) {

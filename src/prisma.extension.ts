@@ -48,10 +48,7 @@ const SOFT_DELETE_ONLY_MODELS = [
 ] as const;
 
 // Models that have `tenantId` but NO `deletedAt` field
-const TENANT_ONLY_MODELS = [
-  'SalesReturn',
-  'StockTransaction',
-] as const;
+const TENANT_ONLY_MODELS = ['SalesReturn', 'StockTransaction'] as const;
 
 type TenantSoftDeleteModel = (typeof TENANT_SOFT_DELETE_MODELS)[number];
 type SoftDeleteOnlyModel = (typeof SOFT_DELETE_ONLY_MODELS)[number];
@@ -59,9 +56,7 @@ type TenantOnlyModel = (typeof TENANT_ONLY_MODELS)[number];
 
 type ModelNames = TenantSoftDeleteModel | SoftDeleteOnlyModel | TenantOnlyModel;
 
-function isTenantSoftDeleteModel(
-  model: string,
-): model is TenantSoftDeleteModel {
+function isTenantSoftDeleteModel(model: string): model is TenantSoftDeleteModel {
   return (TENANT_SOFT_DELETE_MODELS as readonly string[]).includes(model);
 }
 

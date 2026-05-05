@@ -81,6 +81,7 @@ model TenantUser {
 
   @@unique([tenantId, username])
   @@index([username, deletedAt])
+  @@index([tenantId, role])
   @@map("tenant_users")
 }
 
@@ -268,6 +269,7 @@ model PurchaseOrder {
   @@index([createdAt])
   @@index([supplierId])
   @@index([userId])
+  @@index([tenantId, createdAt])
   @@map("purchase_orders")
 }
 
@@ -417,6 +419,7 @@ model ActivityLog {
   @@index([userId])
   @@index([entity])
   @@index([createdAt])
+  @@index([tenantId, entity, createdAt])
   @@map("activity_logs")
 }
 
