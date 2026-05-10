@@ -11,39 +11,12 @@ import { PrismaService } from '../prisma.service';
 import { Prisma } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiHeader, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 
-/**
- * AiDataController — Read-only data endpoints for the Python AI service.
- *
- * ARCHITECTURE RATIONALE:
- * Instead of the Python AI service connecting directly to PostgreSQL (bypassing
- * NestJS business logic), we expose these read-only endpoints. The Python AI
- * service calls these endpoints via HTTP using the internal API key.
- *
- * SECURITY:
- * - All endpoints are GET-only (read-only, no mutations)
- * - Protected by X-Internal-API-Key header
- * - User context (userId, role, tenantId) comes as query params (Python reads from JWT)
- * - tenantId is validated against the user's actual tenant membership
- * - Rate limited by NestJS throttler
- *
- * TENANT ISOLATION (Fix #5):
- * - The `tenantId` query param is REQUIRED for all endpoints
- * - Backend validates that the user actually belongs to the requested tenant
- * - All queries use the tenant-aware Prisma client (`getClient(tenantId)`)
- * - This prevents data leakage even if the internal API key is compromised
- *
- * This solves: Direct DB access by Python (issue #1), Code Duplication (issue #9),
- *              Tenant data leakage (issue #5)
- */
 @ApiTags('ai-data')
 @ApiBearerAuth()
 @Controller('ai-data')
 export class AiDataController {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Internal auth check — validates X-Internal-API-Key from Python AI service.
-   */
   private validateInternalKey(key: string | undefined): void {
     const expected = process.env.AI_INTERNAL_API_KEY;
     if (!expected || key !== expected) {
@@ -51,13 +24,6 @@ export class AiDataController {
     }
   }
 
-  /**
-   * Validate that the user belongs to the specified tenant.
-   * This prevents the AI service from accessing data from other tenants
-   * even if the internal API key is compromised.
-   *
-   * @throws ForbiddenException if the user does not belong to the tenant
-   */
   private async validateTenantAccess(userId: string, tenantId: string): Promise<void> {
     const tenantUser = await this.prisma.tenantUser.findFirst({
       where: {
@@ -95,13 +61,12 @@ export class AiDataController {
 
     try {
       const totalProducts = await prisma.product.count();
-      // Use raw query for stock <= reorderLevel comparison
+
       const lowStockResult: Array<{ count: bigint }> = await prisma.$queryRaw(
         Prisma.sql`SELECT COUNT(*) as count FROM products WHERE "tenantId" = ${tenantId} AND "stockQuantity" <= "reorderLevel" AND "deletedAt" IS NULL`,
       );
       const lowStockCount = Number(lowStockResult[0]?.count || 0);
 
-      // Today's sales
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
@@ -111,7 +76,6 @@ export class AiDataController {
         where: { createdAt: { gte: todayStart } },
       });
 
-      // This month's sales
       const monthStart = new Date();
       monthStart.setDate(1);
       monthStart.setHours(0, 0, 0, 0);
@@ -134,10 +98,6 @@ export class AiDataController {
     }
   }
 
-  // ═════════════════════════════════════════════════════════════════════
-  // LOW STOCK PRODUCTS
-  // ═════════════════════════════════════════════════════════════════════
-
   @Get('products/low-stock')
   @ApiOperation({ summary: 'Get products with low stock (for AI)' })
   @ApiHeader({ name: 'X-Internal-API-Key', required: true })
@@ -158,7 +118,6 @@ export class AiDataController {
     const take = Math.min(Math.max(parseInt(limit || '20', 10) || 20, 1), 50);
 
     try {
-      // Use raw query for stock <= reorderLevel comparison
       const products: Array<{
         id: string;
         name: string;
@@ -191,10 +150,6 @@ export class AiDataController {
     }
   }
 
-  // ═════════════════════════════════════════════════════════════════════
-  // TOP PRODUCTS (by order item count)
-  // ═════════════════════════════════════════════════════════════════════
-
   @Get('products/top')
   @ApiOperation({ summary: 'Get top selling products (for AI)' })
   @ApiHeader({ name: 'X-Internal-API-Key', required: true })
@@ -215,7 +170,6 @@ export class AiDataController {
     const take = Math.min(Math.max(parseInt(limit || '10', 10) || 10, 1), 50);
 
     try {
-      // Group by product and sum quantities from order items
       const topProducts: Array<{ productId: string; total_qty: bigint }> = await prisma.$queryRaw(
         Prisma.sql`SELECT oi."productId", SUM(oi.quantity) as total_qty
            FROM order_items oi
@@ -261,10 +215,6 @@ export class AiDataController {
       throw new InternalServerErrorException(err.message);
     }
   }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // SEARCH PRODUCTS
-  // ═════════════════════════════════════════════════════════════════════
 
   @Get('products/search')
   @ApiOperation({ summary: 'Search products by name/SKU (for AI)' })
@@ -332,10 +282,6 @@ export class AiDataController {
     }
   }
 
-  // ═════════════════════════════════════════════════════════════════════
-  // SALES REPORT
-  // ═════════════════════════════════════════════════════════════════════
-
   @Get('sales/report')
   @ApiOperation({ summary: 'Get sales report (for AI)' })
   @ApiHeader({ name: 'X-Internal-API-Key', required: true })
@@ -371,7 +317,6 @@ export class AiDataController {
         };
       }
 
-      // Staff only sees their own orders
       if (role === 'STAFF') {
         whereSalesReport.userId = userId;
       }
@@ -412,10 +357,6 @@ export class AiDataController {
       throw new InternalServerErrorException(err.message);
     }
   }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // PROFIT & LOSS
-  // ═════════════════════════════════════════════════════════════════════
 
   @Get('sales/profit-loss')
   @ApiOperation({ summary: 'Get profit & loss report (for AI)' })
@@ -476,10 +417,6 @@ export class AiDataController {
     }
   }
 
-  // ═════════════════════════════════════════════════════════════════════
-  // CATEGORIES
-  // ═════════════════════════════════════════════════════════════════════
-
   @Get('categories')
   @ApiOperation({ summary: 'Get product categories with counts (for AI)' })
   @ApiHeader({ name: 'X-Internal-API-Key', required: true })
@@ -518,10 +455,6 @@ export class AiDataController {
       throw new InternalServerErrorException(err.message);
     }
   }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // SUPPLIERS
-  // ═════════════════════════════════════════════════════════════════════
 
   @Get('suppliers')
   @ApiOperation({ summary: 'Get suppliers (for AI)' })
@@ -567,10 +500,6 @@ export class AiDataController {
       throw new InternalServerErrorException(err.message);
     }
   }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // USERS (ADMIN only)
-  // ═════════════════════════════════════════════════════════════════════
 
   @Get('users')
   @ApiOperation({ summary: 'Get users list (ADMIN only, for AI)' })

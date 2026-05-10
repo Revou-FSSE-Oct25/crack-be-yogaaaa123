@@ -58,7 +58,7 @@ describe('ReturnsService', () => {
           quantity: 5,
           returnedQuantity: 0,
           unitPrice: new Prisma.Decimal('100.00'),
-          cogs: new Prisma.Decimal('400.00'), // total for 5 units, i.e. 80/unit
+          cogs: new Prisma.Decimal('400.00'),
         },
       ],
     };
@@ -115,7 +115,7 @@ describe('ReturnsService', () => {
       const result = await service.createReturn(returnDto, 'user-1', 'tenant-1');
 
       expect(result.returnNumber).toBe('RET-001');
-      // totalRefund = 2 * 100 = 200
+
       expect(result.totalRefund).toEqual(new Prisma.Decimal('200.00'));
     });
 
@@ -148,14 +148,14 @@ describe('ReturnsService', () => {
           {
             ...mockSalesOrder.items[0],
             quantity: 5,
-            returnedQuantity: 4, // only 1 left to return
+            returnedQuantity: 4,
           },
         ],
       });
 
       const invalidReturn = {
         ...returnDto,
-        items: [{ orderItemId: 'item-1', quantity: 2 }], // tries to return 2 but only 1 allowed
+        items: [{ orderItemId: 'item-1', quantity: 2 }],
       };
 
       await expect(service.createReturn(invalidReturn, 'user-1', 'tenant-1')).rejects.toThrow(
@@ -214,9 +214,6 @@ describe('ReturnsService', () => {
 
       await service.createReturn(returnDto, 'user-1', 'tenant-1');
 
-      // cogs per unit = 400 / 5 = 80
-      // profit per unit = 100 - 80 = 20
-      // returned: 2 units => decrement profit by 40, cogs by 160
       expect(capturedSalesOrderUpdate.data.totalProfit.decrement).toEqual(
         new Prisma.Decimal('40.00'),
       );

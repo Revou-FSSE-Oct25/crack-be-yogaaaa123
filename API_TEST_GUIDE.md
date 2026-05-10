@@ -5,10 +5,12 @@
 ### A. Setup Backend (NestJS)
 
 1. **Setup Environment**
+
    ```bash
    cd crack-be-yogaaaa123
    cp .env.example .env
    ```
+
    Edit `.env`:
    - `DATABASE_URL` — isi dengan URL PostgreSQL kamu
    - `JWT_SECRET` — isi dengan secret random (min 64 chars)
@@ -30,10 +32,12 @@
 > **⚠️ Syarat:** Python 3.12+ dan [uv](https://docs.astral.sh/uv/) harus terinstall.
 
 1. **Setup Environment AI**
+
    ```bash
    cd crack-be-yogaaaa123/crack-ai
    cp .env.example .env
    ```
+
    Edit `crack-ai/.env`:
    - `DATABASE_URL` — **SAMA** dengan yang di backend `.env`
    - `JWT_SECRET` — **HARUS SAMA PERSIS** dengan `JWT_SECRET` di backend `.env`
@@ -61,24 +65,24 @@
 
 ## 📌 Daftar Isi
 
-| # | Modul | Endpoint |
-|---|-------|----------|
-| 1 | [Auth](#1-auth) | Register, Login, Refresh, Logout |
-| 2 | [Admin (Super Admin)](#2-admin-super-admin) | Login, Tenants, Stats |
-| 3 | [Users](#3-users) | CRUD Users, Change Password |
-| 4 | [Categories](#4-categories) | CRUD Categories |
-| 5 | [Suppliers](#5-suppliers) | CRUD Suppliers |
-| 6 | [Products](#6-products) | CRUD Products |
-| 7 | [Inventory](#7-inventory) | Adjust Stock, Low Stock, Reorder Check |
-| 8 | [Sales](#8-sales) | Create Sales, Pending, Complete, Cancel |
-| 9 | [Purchase](#9-purchase) | Create PO, Pending, Receive, Cancel |
-| 10 | [Returns](#10-returns) | Create Return, List Returns |
-| 11 | [Dashboard](#11-dashboard) | Summary, Top Products, Sales Trend, Inventory Value |
-| 12 | [Reports](#12-reports) | Sales, Inventory, Profit & Loss, CSV Export |
-| 13 | [Upload](#13-upload) | Upload Image |
-| 14 | [Activity Logs](#14-activity-logs) | List & Detail Logs |
-| 15 | [Health](#15-health) | Health Check |
-| 16 | [AI Chat](#16-ai-chat) | Chat with AI Assistant |
+| #   | Modul                                       | Endpoint                                            |
+| --- | ------------------------------------------- | --------------------------------------------------- |
+| 1   | [Auth](#1-auth)                             | Register, Login, Refresh, Logout                    |
+| 2   | [Admin (Super Admin)](#2-admin-super-admin) | Login, Tenants, Stats                               |
+| 3   | [Users](#3-users)                           | CRUD Users, Change Password                         |
+| 4   | [Categories](#4-categories)                 | CRUD Categories                                     |
+| 5   | [Suppliers](#5-suppliers)                   | CRUD Suppliers                                      |
+| 6   | [Products](#6-products)                     | CRUD Products                                       |
+| 7   | [Inventory](#7-inventory)                   | Adjust Stock, Low Stock, Reorder Check              |
+| 8   | [Sales](#8-sales)                           | Create Sales, Pending, Complete, Cancel             |
+| 9   | [Purchase](#9-purchase)                     | Create PO, Pending, Receive, Cancel                 |
+| 10  | [Returns](#10-returns)                      | Create Return, List Returns                         |
+| 11  | [Dashboard](#11-dashboard)                  | Summary, Top Products, Sales Trend, Inventory Value |
+| 12  | [Reports](#12-reports)                      | Sales, Inventory, Profit & Loss, CSV Export         |
+| 13  | [Upload](#13-upload)                        | Upload Image                                        |
+| 14  | [Activity Logs](#14-activity-logs)          | List & Detail Logs                                  |
+| 15  | [Health](#15-health)                        | Health Check                                        |
+| 16  | [AI Chat](#16-ai-chat)                      | Chat with AI Assistant                              |
 
 ---
 
@@ -98,6 +102,7 @@
 ```
 
 **Response (201):**
+
 ```json
 {
   "message": "Registrasi berhasil",
@@ -126,6 +131,7 @@
 ```
 
 **Response (200):**
+
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIs...",
@@ -147,11 +153,13 @@
 **POST** `{{base_url}}/auth/refresh`
 
 **Headers:**
+
 ```
 x-refresh-token: <refresh_token_dari_login>
 ```
 
 **Response (200):**
+
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIs...",
@@ -165,11 +173,13 @@ x-refresh-token: <refresh_token_dari_login>
 **POST** `{{base_url}}/auth/logout`
 
 **Headers:**
+
 ```
 Authorization: Bearer <access_token>
 ```
 
 **Response (200):**
+
 ```json
 {
   "message": "Logged out successfully"
@@ -192,6 +202,7 @@ Authorization: Bearer <access_token>
 ```
 
 **Response (200):**
+
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIs...",
@@ -212,6 +223,7 @@ Authorization: Bearer <access_token>
 **GET** `{{base_url}}/admin/tenants?skip=0&take=10`
 
 **Headers:**
+
 ```
 Authorization: Bearer <super_admin_token>
 ```
@@ -387,13 +399,13 @@ Authorization: Bearer <super_admin_token>
 
 **GET** `{{base_url}}/products?skip=0&take=10&search=iphone&categoryId=xxx&supplierId=xxx`
 
-| Parameter | Tipe | Keterangan |
-|-----------|------|------------|
-| `skip` | number | Data yang dilewati |
-| `take` | number | Jumlah data (default: 50) |
-| `search` | string | Cari berdasarkan nama atau SKU |
-| `categoryId` | string | Filter by kategori |
-| `supplierId` | string | Filter by supplier |
+| Parameter    | Tipe   | Keterangan                     |
+| ------------ | ------ | ------------------------------ |
+| `skip`       | number | Data yang dilewati             |
+| `take`       | number | Jumlah data (default: 50)      |
+| `search`     | string | Cari berdasarkan nama atau SKU |
+| `categoryId` | string | Filter by kategori             |
+| `supplierId` | string | Filter by supplier             |
 
 ### 6.3 Detail Produk
 
@@ -433,10 +445,10 @@ Authorization: Bearer <super_admin_token>
 }
 ```
 
-| Field | Keterangan |
-|-------|------------|
+| Field            | Keterangan                                                |
+| ---------------- | --------------------------------------------------------- |
 | `quantityChange` | **POSITIVE** = nambah stok, **NEGATIVE** = ngurangin stok |
-| `type` | `ADJUSTMENT`, `DAMAGED`, `LOST`, `FOUND`, `MANUAL` |
+| `type`           | `ADJUSTMENT`, `DAMAGED`, `LOST`, `FOUND`, `MANUAL`        |
 
 ### 7.2 Produk Low Stock
 
@@ -606,6 +618,7 @@ Authorization: Bearer <super_admin_token>
 **GET** `{{base_url}}/dashboard/summary`
 
 **Response:**
+
 ```json
 {
   "totalProducts": 150,
@@ -670,6 +683,7 @@ Authorization: Bearer <super_admin_token>
 **POST** `{{base_url}}/upload/image`
 
 **Headers:**
+
 ```
 Authorization: Bearer <access_token>
 Content-Type: multipart/form-data
@@ -681,6 +695,7 @@ Content-Type: multipart/form-data
 | `file` | (pilih file gambar) |
 
 **Response:**
+
 ```json
 {
   "filename": "abc123.jpg",
@@ -714,6 +729,7 @@ Content-Type: multipart/form-data
 **GET** `{{base_url}}/health`
 
 **Response (200):**
+
 ```json
 {
   "status": "ok",
@@ -741,6 +757,7 @@ Content-Type: multipart/form-data
 ```
 
 **Response:**
+
 ```json
 {
   "reply": "Berikut adalah produk dengan stok menipis:\n1. **iPhone 15** - Stok: 3 (Re-order: 10)\n2. **Samsung Galaxy** - Stok: 5 (Re-order: 8)",
@@ -749,6 +766,7 @@ Content-Type: multipart/form-data
 ```
 
 **Contoh pertanyaan lain:**
+
 - "Berapa total revenue bulan ini?"
 - "Produk apa yang paling laris?"
 - "Tolong cari produk dengan nama 'iPhone'"
@@ -760,6 +778,7 @@ Content-Type: multipart/form-data
 ## 🎯 Alur Test Lengkap (Urutan yang Disarankan)
 
 ### Flow 1: Auth & Master Data
+
 ```
 1. POST /auth/register          → Daftar toko baru (dapat token)
 2. POST /auth/login              → Login (dapat access_token & refresh_token)
@@ -774,6 +793,7 @@ Content-Type: multipart/form-data
 ```
 
 ### Flow 2: Transaksi
+
 ```
 11. POST /purchase               → Beli stok (PO langsung RECEIVED)
 12. POST /purchase/pending       → Buat PO PENDING
@@ -786,6 +806,7 @@ Content-Type: multipart/form-data
 ```
 
 ### Flow 3: Inventory & Returns
+
 ```
 19. GET  /inventory/low-stock    → Cek produk low stock
 20. GET  /inventory/check-reorder/:productId → Cek reorder
@@ -795,6 +816,7 @@ Content-Type: multipart/form-data
 ```
 
 ### Flow 4: Dashboard & Reports
+
 ```
 24. GET  /dashboard/summary      → Ringkasan dashboard
 25. GET  /dashboard/top-products → Produk terlaris
@@ -806,6 +828,7 @@ Content-Type: multipart/form-data
 ```
 
 ### Flow 5: Admin & Users
+
 ```
 31. POST /admin/login            → Login Super Admin
 32. GET  /admin/tenants          → Daftar semua tenant
@@ -817,12 +840,14 @@ Content-Type: multipart/form-data
 ```
 
 ### Flow 6: AI & Upload
+
 ```
 38. POST /ai/chat                → Tanya AI asisten
 39. POST /upload/image           → Upload gambar produk (multipart/form-data)
 ```
 
 ### Flow 7: Token Management
+
 ```
 40. POST /auth/refresh           → Refresh token (pake x-refresh-token header)
 41. POST /auth/logout            → Logout (revoke semua refresh token)
@@ -833,6 +858,7 @@ Content-Type: multipart/form-data
 ## ⚠️ Catatan Penting
 
 1. **Authorization Header:** Semua endpoint (kecuali auth & health) butuh:
+
    ```
    Authorization: Bearer <access_token>
    ```

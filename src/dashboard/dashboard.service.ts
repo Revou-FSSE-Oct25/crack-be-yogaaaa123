@@ -12,7 +12,6 @@ export class DashboardService {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Aggregated queries
     const [
       totalProducts,
       totalProductsInStock,
@@ -27,21 +26,21 @@ export class DashboardService {
       prisma.product.count({ where: { stockQuantity: { gt: 0 } } }),
       prisma.supplier.count(),
       prisma.category.count(),
-      // Today's sales
+
       prisma.salesOrder.aggregate({
         _sum: { totalPrice: true, totalProfit: true },
         where: { createdAt: { gte: startOfToday } },
       }),
-      // This month's sales
+
       prisma.salesOrder.aggregate({
         _sum: { totalPrice: true, totalProfit: true },
         where: { createdAt: { gte: startOfMonth } },
       }),
-      // All time total sales revenue
+
       prisma.salesOrder.aggregate({
         _sum: { totalPrice: true },
       }),
-      // Low stock products — use raw query because Prisma ORM doesn't support column-to-column comparison
+
       prisma.$queryRaw<
         Array<{
           id: string;
@@ -82,7 +81,7 @@ export class DashboardService {
 
   async getTopProducts(tenantId: string, limit = 10) {
     const prisma = this.prisma.getClient(tenantId);
-    // Get top-selling products by total quantity sold from COMPLETED orders
+
     return prisma.orderItem.groupBy({
       by: ['productId'],
       _sum: { quantity: true },
@@ -94,29 +93,11 @@ export class DashboardService {
     });
   }
 
-  /**
-   * Get sales trend over the last N days, grouped by day.
-   *
-   * BUG FIX (getSalesTrend):
-   * Previously used Prisma's groupBy on 'createdAt', which groups by the FULL
-   * timestamp (including hours/minutes/seconds). This meant every order got its
-   * own group since timestamps are unique. The result was a flat list of orders
-   * instead of daily aggregates.
-   *
-   * Now uses $queryRaw with PostgreSQL's DATE_TRUNC to group by day:
-   *   SELECT DATE_TRUNC('day', "createdAt") AS date, ...
-   *   GROUP BY DATE_TRUNC('day', "createdAt")
-   *   ORDER BY date ASC
-   *
-   * This correctly aggregates revenue/profit per day.
-   */
   async getSalesTrend(tenantId: string, days = 30) {
     const prisma = this.prisma.getClient(tenantId);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    // Use raw SQL with DATE_TRUNC to properly group sales by day
-    // PostgreSQL's DATE_TRUNC('day', timestamp) rounds down to midnight
     const result = await prisma.$queryRaw<
       Array<{
         date: Date;

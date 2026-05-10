@@ -10,7 +10,6 @@ export class PrismaHealthIndicator extends HealthIndicator {
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
     try {
-      // Execute a lightweight query to verify database connectivity
       await this.prisma.tenantUser.findFirst({ select: { id: true } });
       return this.getStatus(key, true);
     } catch (e) {

@@ -11,7 +11,6 @@ from typing import Any
 from database import get_pool
 from tools import cap
 
-
 async def get_sales_report(
     user_id: str, role: str, tenant_id: str,
     start_date: str | None = None, end_date: str | None = None,
@@ -77,7 +76,6 @@ async def get_sales_report(
         ],
     }
 
-
 async def get_profit_loss(
     user_id: str, role: str, tenant_id: str,
     start_date: str | None = None, end_date: str | None = None,
@@ -116,7 +114,6 @@ async def get_profit_loss(
         "total_profit": total_profit,
         "profit_margin_pct": round((total_profit / total_revenue * 100) if total_revenue > 0 else 0, 2),
     }
-
 
 async def get_sales_returns(
     user_id: str, role: str, tenant_id: str,
@@ -171,3 +168,4 @@ async def get_sales_returns(
             for r in rows
         ],
     }
+

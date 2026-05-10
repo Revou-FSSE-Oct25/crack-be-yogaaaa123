@@ -69,3 +69,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Local audit reports (security, compliance, etc.)
 docs/local/
+.sisyphus/
+.playwright/
+.playwright-mcp/

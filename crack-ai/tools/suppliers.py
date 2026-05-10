@@ -6,8 +6,7 @@ TENANT ISOLATION: All queries filtered by tenantId to prevent cross-tenant data 
 from __future__ import annotations
 from typing import Any
 from database import get_pool
-from tools import cap, validate_status, ALLOWED_PURCHASE_STATUSES
-
+from tools import cap, validate_status, VALID_STATUSES
 
 async def get_suppliers(user_id: str, role: str, tenant_id: str, limit: int | None = None) -> dict[str, Any]:
     """List suppliers. ADMIN only. Tenant isolated."""
@@ -35,7 +34,6 @@ async def get_suppliers(user_id: str, role: str, tenant_id: str, limit: int | No
         ],
     }
 
-
 async def get_purchase_orders(
     user_id: str, role: str, tenant_id: str,
     start_date: str | None = None, end_date: str | None = None,
@@ -57,7 +55,7 @@ async def get_purchase_orders(
         conditions.append(f'po."createdAt" <= ${param_index}::date + interval \'1 day\'')
         params.append(end_date)
     if status:
-        validated_status = validate_status(status, ALLOWED_PURCHASE_STATUSES)
+        validated_status = validate_status(status)
         param_index += 1
         conditions.append(f'po.status = ${param_index}')
         params.append(validated_status)
@@ -89,3 +87,4 @@ async def get_purchase_orders(
             for r in rows
         ],
     }
+

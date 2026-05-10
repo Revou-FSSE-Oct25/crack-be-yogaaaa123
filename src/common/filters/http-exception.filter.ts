@@ -11,17 +11,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = exception.getStatus();
     const exceptionResponse = exception.getResponse();
 
-    const errorResponse = {
+    const errorResponse: Record<string, unknown> = {
       statusCode: status,
       message:
         typeof exceptionResponse === 'string'
           ? exceptionResponse
           : (exceptionResponse as Record<string, unknown>).message || exception.message,
-      error: exception.name,
       timestamp: new Date().toISOString(),
     };
 
-    // Log 5xx errors as errors, 4xx as warnings
+    if (process.env.NODE_ENV !== 'production') {
+      errorResponse.error = exception.name;
+    }
+
     if (status >= 500) {
       this.logger.error(
         `HTTP ${status}: ${JSON.stringify(errorResponse.message)}`,

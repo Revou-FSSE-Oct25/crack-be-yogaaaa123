@@ -8,11 +8,6 @@ export class AdminService {
 
   constructor(private prisma: PrismaService) {}
 
-  // ── TENANT MANAGEMENT ──────────────────────────────────────────────
-
-  /**
-   * Daftar semua tenant (toko) — hanya data platform, bukan data bisnis
-   */
   async findAllTenants(skip?: number, take?: number) {
     const [tenants, total] = await Promise.all([
       this.prisma.tenant.findMany({
@@ -57,9 +52,6 @@ export class AdminService {
     };
   }
 
-  /**
-   * Detail satu tenant — hanya data platform
-   */
   async findTenantById(id: string) {
     const tenant = await this.prisma.tenant.findFirst({
       where: { id, deletedAt: null },
@@ -119,9 +111,6 @@ export class AdminService {
     };
   }
 
-  /**
-   * Soft delete tenant — hapus semua data toko
-   */
   async removeTenant(id: string) {
     const tenant = await this.prisma.tenant.findFirst({
       where: { id, deletedAt: null },
@@ -131,12 +120,9 @@ export class AdminService {
       throw new NotFoundException('Tenant tidak ditemukan');
     }
 
-    // Soft delete tenant — semua data terkait ikut terhapus via cascade?
-    // Tidak, kita soft delete manual untuk keamanan
     await this.prisma.$transaction(async (tx) => {
       const now = new Date();
 
-      // Soft delete semua data tenant
       await tx.tenantUser.updateMany({ where: { tenantId: id }, data: { deletedAt: now } });
       await tx.product.updateMany({ where: { tenantId: id }, data: { deletedAt: now } });
       await tx.category.updateMany({ where: { tenantId: id }, data: { deletedAt: now } });
@@ -150,11 +136,6 @@ export class AdminService {
     return { message: 'Tenant berhasil dihapus', id, name: tenant.name };
   }
 
-  // ── PLATFORM STATISTICS ────────────────────────────────────────────
-
-  /**
-   * Statistik agregat platform — hanya angka, bukan data detail
-   */
   async getPlatformStats() {
     const [
       totalTenants,
@@ -184,11 +165,6 @@ export class AdminService {
     };
   }
 
-  // ── SUPER ADMIN AUTH ───────────────────────────────────────────────
-
-  /**
-   * Login super admin — endpoint terpisah dari user biasa
-   */
   async login(email: string, password: string) {
     const admin = await this.prisma.platformAdmin.findFirst({
       where: { email, deletedAt: null },

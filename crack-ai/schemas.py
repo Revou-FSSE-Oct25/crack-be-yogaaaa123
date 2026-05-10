@@ -5,7 +5,6 @@ DTOs for request/response API.
 from typing import Literal
 from pydantic import BaseModel, Field
 
-
 class ChatMessage(BaseModel):
     """A single message in the chat history.
 
@@ -22,7 +21,6 @@ class ChatMessage(BaseModel):
         description="List of text parts in this message",
     )
 
-
 class ChatRequest(BaseModel):
     """Request body for POST /chat."""
     message: str = Field(
@@ -33,10 +31,9 @@ class ChatRequest(BaseModel):
     )
     history: list[ChatMessage] = Field(
         default=[],
-        max_length=20,  # Limit history to 20 messages (save tokens)
+        max_length=20,
         description="Previous chat history (optional)",
     )
-
 
 class ChatResponse(BaseModel):
     """Response from POST /chat."""
@@ -44,3 +41,16 @@ class ChatResponse(BaseModel):
     tools_used: list[str]
     username: str
     role: str
+
+class ProductImageItem(BaseModel):
+    """A product identified from an image."""
+    name: str
+    estimatedQuantity: int = 1
+    confidence: str = "medium"
+    suggestedPrice: float | None = None
+    suggestedCategory: str | None = None
+
+class ProductFromImageResponse(BaseModel):
+    """Response from POST /ai/product-from-image."""
+    products: list[ProductImageItem]
+

@@ -25,7 +25,6 @@ import sys
 
 import structlog
 
-
 def setup_logging() -> None:
     """
     Initialize structlog with appropriate configuration based on environment.
@@ -41,7 +40,6 @@ def setup_logging() -> None:
     is_production = os.getenv("NODE_ENV", "") == "production"
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
-    # Konfigurasi shared processors
     shared_processors: list[structlog.typing.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.filter_by_level,
@@ -50,15 +48,15 @@ def setup_logging() -> None:
         structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
-        structlog.dev.set_exc_info,  # auto-include exc_info on error
+        structlog.dev.set_exc_info,
     ]
 
     if is_production:
-        # Production: JSON output
+
         shared_processors.append(structlog.processors.format_exc_info)
         shared_processors.append(structlog.processors.JSONRenderer())
     else:
-        # Development: colorful console
+
         shared_processors.append(structlog.dev.ConsoleRenderer(
             colors=True,
             sort_keys=False,
@@ -72,13 +70,11 @@ def setup_logging() -> None:
         cache_logger_on_first_use=True,
     )
 
-    # Set root logger level
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
         level=getattr(logging, log_level, logging.INFO),
     )
-
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """
@@ -94,3 +90,4 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
             logger.error("error message", exc_info=True)
     """
     return structlog.get_logger(name or "crack-ai")
+

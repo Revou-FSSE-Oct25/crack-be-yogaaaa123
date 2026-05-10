@@ -10,7 +10,6 @@ from typing import Any
 from database import get_pool
 from tools import cap, validate_transaction_type, validate_uuid
 
-
 async def get_inventory_value(user_id: str, role: str, tenant_id: str) -> dict[str, Any]:
     """Current total inventory value. ADMIN only. Tenant isolated."""
     if role != "ADMIN":
@@ -31,7 +30,6 @@ async def get_inventory_value(user_id: str, role: str, tenant_id: str) -> dict[s
         "total_inventory_value_at_price": float(row["total_inventory_value"]),
         "total_inventory_value_at_cost": float(row["total_cost_value"]),
     }
-
 
 async def get_stock_transactions(
     user_id: str, role: str, tenant_id: str,
@@ -83,3 +81,4 @@ async def get_stock_transactions(
             for r in rows
         ],
     }
+

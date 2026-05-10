@@ -16,7 +16,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
-    // If it's an HttpException, use its status and message instead of generic 500
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
@@ -27,12 +26,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
       this.logger.warn(`HTTP ${status}: ${JSON.stringify(message)}`);
 
-      response.status(status).json({
+      const body: Record<string, unknown> = {
         statusCode: status,
         message,
-        error: exception.name,
         timestamp: new Date().toISOString(),
-      });
+      };
+      if (process.env.NODE_ENV !== 'production') {
+        body.error = exception.name;
+      }
+
+      response.status(status).json(body);
       return;
     }
 
@@ -44,11 +47,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       exception instanceof Error ? exception.stack : undefined,
     );
 
-    response.status(status).json({
+    const body: Record<string, unknown> = {
       statusCode: status,
       message,
-      error: 'Internal Server Error',
       timestamp: new Date().toISOString(),
-    });
+    };
+    if (process.env.NODE_ENV !== 'production') {
+      body.error = 'Internal Server Error';
+    }
+
+    response.status(status).json(body);
   }
 }

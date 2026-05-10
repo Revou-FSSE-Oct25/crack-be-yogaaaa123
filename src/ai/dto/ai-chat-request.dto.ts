@@ -10,10 +10,6 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/**
- * DTO for each message in the chat history sent to the AI.
- * Mirrors the structure expected by the Python AI service.
- */
 export class AiChatHistoryMessage {
   @ApiPropertyOptional({
     example: 'user',
@@ -41,11 +37,6 @@ export class AiChatHistoryMessage {
   content?: string;
 }
 
-/**
- * DTO for POST /ai/chat request body.
- * Replaces inline `{ message: string; history?: any[] }` with
- * proper validation using class-validator.
- */
 export class AiChatRequestDto {
   @ApiProperty({
     example: 'Tampilkan produk yang stoknya mau habis',

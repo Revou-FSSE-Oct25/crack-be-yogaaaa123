@@ -13,7 +13,7 @@ export async function seedTenantAndUsers(
     data: {
       name: 'Default Store',
       slug: 'default-store',
-      aiTokens: 150,
+      aiTokens: 10000,
       aiTokensUsed: 0,
     },
   });

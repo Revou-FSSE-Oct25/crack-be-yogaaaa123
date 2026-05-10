@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# Domain-specific tool implementations (split for maintainability)
 from tools.dashboard import get_dashboard_summary
 from tools.products import get_low_stock_products, get_top_products, search_products
 from tools.sales import get_sales_report, get_profit_loss, get_sales_returns
@@ -26,11 +25,6 @@ from tools.categories import get_categories
 from tools.suppliers import get_suppliers, get_purchase_orders
 from tools.users import get_users, get_activity_logs
 
-
-# ─── Tool Registry ──────────────────────────────────────────────────────────────
-# Every tool function has the same signature:
-#   async fn(user_id: str, role: str, tenant_id: str, **kwargs) -> dict[str, Any]
-# user_id, role, and tenant_id are injected from JWT, never from AI's message.
 TOOL_REGISTRY: dict[str, Any] = {
     "get_dashboard_summary": get_dashboard_summary,
     "get_low_stock_products": get_low_stock_products,
@@ -47,7 +41,6 @@ TOOL_REGISTRY: dict[str, Any] = {
     "get_users": get_users,
     "get_activity_logs": get_activity_logs,
 }
-
 
 async def execute_tool(
     tool_name: str,
@@ -82,3 +75,4 @@ async def execute_tool(
         raise ValueError(f"Unknown tool: '{tool_name}'. Available tools: {', '.join(sorted(TOOL_REGISTRY.keys()))}")
 
     return await tool(user_id=user_id, role=role, tenant_id=tenant_id, **kwargs)
+

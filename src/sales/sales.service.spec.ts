@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
-// Mock PrismaService
 const mockPrismaService = () => ({
   product: {
     findMany: jest.fn(),

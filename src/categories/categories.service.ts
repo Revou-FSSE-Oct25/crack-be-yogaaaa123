@@ -56,7 +56,7 @@ export class CategoriesService {
   async remove(id: string, tenantId: string) {
     const prisma = this.prisma.getClient(tenantId);
     await this.findOne(id, tenantId);
-    // Soft delete
+
     return prisma.category.update({
       where: { id },
       data: { deletedAt: new Date() },

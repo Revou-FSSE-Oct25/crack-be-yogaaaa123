@@ -7,7 +7,6 @@ from __future__ import annotations
 from typing import Any
 from database import get_pool
 
-
 async def get_categories(user_id: str, role: str, tenant_id: str) -> dict[str, Any]:
     """List all product categories. Tenant isolated."""
     pool = await get_pool()
@@ -27,3 +26,4 @@ async def get_categories(user_id: str, role: str, tenant_id: str) -> dict[str, A
             for r in rows
         ],
     }
+

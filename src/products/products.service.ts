@@ -32,7 +32,6 @@ export class ProductsService {
     const prisma = this.prisma.getClient(tenantId);
     const where: Prisma.ProductWhereInput = {};
 
-    // Search by name or SKU
     if (options?.search) {
       where.OR = [
         { name: { contains: options.search, mode: 'insensitive' } },
@@ -40,12 +39,10 @@ export class ProductsService {
       ];
     }
 
-    // Filter by category
     if (options?.categoryId) {
       where.categoryId = options.categoryId;
     }
 
-    // Filter by supplier
     if (options?.supplierId) {
       where.supplierId = options.supplierId;
     }

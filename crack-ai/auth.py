@@ -23,7 +23,6 @@ from config import settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-
 class AuthenticatedUser:
     """Represents a verified user from JWT or internal API key.
 
@@ -39,7 +38,6 @@ class AuthenticatedUser:
 
     def __repr__(self) -> str:
         return f"AuthenticatedUser(id={self.user_id}, username={self.username}, role={self.role}, tenant_id={self.tenant_id})"
-
 
 def verify_token(token: str) -> AuthenticatedUser:
     """
@@ -66,7 +64,6 @@ def verify_token(token: str) -> AuthenticatedUser:
         if not user_id or not username or not role:
             raise credentials_exception
 
-        # SUPER_ADMIN users may not have tenantId — use empty string
         if role == "SUPER_ADMIN" and not tenant_id:
             tenant_id = ""
 
@@ -79,7 +76,6 @@ def verify_token(token: str) -> AuthenticatedUser:
 
     except JWTError:
         raise credentials_exception
-
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
@@ -112,7 +108,7 @@ async def get_current_user(
         tenantId is now extracted from JWT payload to enforce multi-tenant data isolation.
         All tool functions will use this tenantId to filter database queries.
     """
-    # ─── Validate Internal API Key First (if present) ────────────────────────
+
     internal_key_valid = False
     if x_internal_api_key:
         if x_internal_api_key == settings.internal_api_key:
@@ -123,15 +119,13 @@ async def get_current_user(
                 detail="Invalid internal API key",
             )
 
-    # ─── Extract and Verify JWT ──────────────────────────────────────────────
     jwt_token: str | None = None
 
     if credentials:
-        # JWT from HTTP Bearer header (frontend or NestJS forwarding)
+
         jwt_token = credentials.credentials
     elif authorization:
-        # Authorization header without Bearer scheme parsing
-        # Support both "Bearer <token>" and raw "<token>"
+
         if authorization.startswith("Bearer "):
             jwt_token = authorization[len("Bearer "):]
         else:
@@ -139,8 +133,7 @@ async def get_current_user(
 
     if not jwt_token:
         if internal_key_valid:
-            # This should never happen if NestJS is configured correctly.
-            # NestJS always forwards the user's JWT alongside the internal key.
+
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=(
@@ -156,10 +149,8 @@ async def get_current_user(
             ),
         )
 
-    # Verify the JWT — this gives us the REAL user identity
     user = verify_token(jwt_token)
 
-    # If internal key was used, log that this was a proxied request
     if internal_key_valid:
         print(
             f"[Auth] Proxied request via NestJS backend — "
@@ -167,3 +158,4 @@ async def get_current_user(
         )
 
     return user
+

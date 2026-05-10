@@ -152,8 +152,6 @@ Membuat user baru (Admin atau Staff).
     @Body() changePasswordDto: ChangePasswordDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // Ensure user can only change their own password
-    // (Admins who need to reset can use the create flow)
     if (user.id !== id) {
       throw new ForbiddenException('Forbidden: you can only change your own password');
     }

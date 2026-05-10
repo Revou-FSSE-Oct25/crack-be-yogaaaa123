@@ -12,7 +12,7 @@ import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(TenantRole.ADMIN)
-@Controller('activity-logs')
+@Controller('activity-log')
 export class ActivityLogController {
   constructor(private readonly activityLogService: ActivityLogService) {}
 

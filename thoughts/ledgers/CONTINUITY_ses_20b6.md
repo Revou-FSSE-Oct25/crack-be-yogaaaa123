@@ -6,9 +6,11 @@ updated: 2026-05-05T06:49:17.217Z
 # Session Summary
 
 ## Goal
+
 Migrate backend auth from Bearer header-based JWT to HttpOnly cookie-based auth with CSRF double-submit cookie protection, and update the Next.js FE proxy to forward backend cookies properly.
 
 ## Constraints & Preferences
+
 - Backend: NestJS v11 on `crack-be/crack-be-yogaaaa123`, Prisma v7, PostgreSQL
 - Frontend FE: `test-fe-be/` — Next.js with Route Handler proxy pattern (all requests go through `/api/proxy/[...path]/route.ts`)
 - BE CORS origins: `http://localhost:5173` and `http://localhost:3001`
@@ -21,7 +23,9 @@ Migrate backend auth from Bearer header-based JWT to HttpOnly cookie-based auth 
 - Rate limits: auth 10/min, refresh 5/min, register 5/min, global 60/min
 
 ## Progress
+
 ### Done
+
 - [x] **BE cookie-parser + CORS**: installed `cookie-parser` + `@types/cookie-parser`, registered in `main.ts` before CORS, CORS allowedHeaders added `x-csrf-token`
 - [x] **BE JWT strategy dual-mode**: `jwt.strategy.ts` reads `req.cookies.auth_token` first, falls back to `ExtractJwt.fromAuthHeaderAsBearerToken()`
 - [x] **BE auth controller + service**: login/register/refresh/logout now use `@Res({ passthrough: true })` + `res.cookie()` to set HttpOnly cookies (`auth_token` 15m, `refresh_token` 7d), body response stripped of tokens: login returns `{ user }`, register returns `{ message, user }`, refresh returns `{ message }`, logout clears cookies
@@ -35,22 +39,27 @@ Migrate backend auth from Bearer header-based JWT to HttpOnly cookie-based auth 
 - [x] **README.md rewritten**: comprehensive architecture docs with ASCII diagram, endpoint tables, security features, error handling, database schema
 
 ### In Progress
+
 - (none)
 
 ### Blocked
+
 - (none)
 
 ## Key Decisions
+
 - **Cookie-forward instead of manual token parsing in FE proxy**: BE sets HttpOnly cookies, FE `login/route.ts` reads `Set-Cookie` from BE response and forwards those headers to the browser — avoids duplicate cookie management
 - **Use `any` type for `@Res()`/`@Req()` parameters**: `isolatedModules` + `emitDecoratorMetadata` prevents `import type { Response }` for decorated params; runtime injection works regardless
 - **camelCase in service return vs snake_case in DB**: Service returns `accessToken`/`refreshToken`, controller maps to cookies — cleaner code in controller layer
 
 ## Next Steps
+
 1. ~~Complete FE build tests~~ (done)
 2. ~~Push changes to remote~~ (done)
 3. ~~Update README.md with architecture docs~~ (done)
 
 ## Critical Context
+
 - BE repo: `crack-be/crack-be-yogaaaa123.git` on branch `backend-tester`, remote `origin`
 - FE repo: `Frontend-crack-2026.git` on branch `main`
 - Deployed BE URL: probably Railway (`https://proud-achievement-production-c636.up.railway.app`) — verify if deployment needs env var updates for cookie auth
@@ -58,7 +67,9 @@ Migrate backend auth from Bearer header-based JWT to HttpOnly cookie-based auth 
 - Uploaded images stored to `./uploads/` but NOT served via static middleware — FE cannot access uploaded files. Needs `@nestjs/serve-static` or external storage (S3/Cloudinary) to work properly
 
 ## File Operations
+
 ### Read
+
 - `/home/satria/Final-project-crack/crack-be/crack-be-yogaaaa123/.env.example`
 - `/home/satria/Final-project-crack/crack-be/crack-be-yogaaaa123/README.md`
 - `/home/satria/Final-project-crack/crack-be/crack-be-yogaaaa123/package.json`
@@ -77,6 +88,7 @@ Migrate backend auth from Bearer header-based JWT to HttpOnly cookie-based auth 
 - `/home/satria/Final-project-crack/test-fe-be/src/proxy.ts`
 
 ### Written
+
 - `/home/satria/Final-project-crack/crack-be/crack-be-yogaaaa123/README.md` (rewritten with full architecture docs)
 - `/home/satria/Final-project-crack/test-fe-be/src/app/api/auth/login/route.ts` (rewritten to forward Set-Cookie)
 - `/home/satria/Final-project-crack/test-fe-be/src/lib/api.ts` (added CSRF interceptor)

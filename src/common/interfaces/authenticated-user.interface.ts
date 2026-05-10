@@ -4,4 +4,5 @@ export interface AuthenticatedUser {
   role: string;
   tenantId: string;
   isSuperAdmin?: boolean;
+  isPlatformUser?: boolean;
 }

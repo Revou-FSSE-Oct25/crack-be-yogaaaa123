@@ -22,9 +22,7 @@ import httpx
 from typing import Any
 from config import settings
 
-# Shared httpx client with connection pooling for performance
 _client: httpx.AsyncClient | None = None
-
 
 def _get_client() -> httpx.AsyncClient:
     """Get or create the shared httpx client (connection pool)."""
@@ -36,7 +34,6 @@ def _get_client() -> httpx.AsyncClient:
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
         )
     return _client
-
 
 class BackendClient:
     """HTTP client for the NestJS AiDataController.
@@ -61,7 +58,7 @@ class BackendClient:
         """Make authenticated GET request to NestJS AiDataController."""
         query_params = {"userId": self.user_id, "role": self.role}
         if params:
-            # Add extra params, but don't override userId/role
+
             for k, v in params.items():
                 if v is not None:
                     query_params[k] = v
@@ -82,17 +79,9 @@ class BackendClient:
             print(f"⚠️ Backend API request failed: {e}")
             raise
 
-    # ═══════════════════════════════════════════════════════════════════
-    # DASHBOARD
-    # ═══════════════════════════════════════════════════════════════════
-
     async def get_dashboard_summary(self) -> dict[str, Any]:
         """Get dashboard KPI summary."""
         return await self._get("/dashboard/summary")
-
-    # ═══════════════════════════════════════════════════════════════════
-    # PRODUCTS
-    # ═══════════════════════════════════════════════════════════════════
 
     async def get_low_stock_products(self, limit: int = 20) -> dict[str, Any]:
         """Get products where stock <= reorder point."""
@@ -105,10 +94,6 @@ class BackendClient:
     async def search_products(self, query: str, limit: int = 10) -> dict[str, Any]:
         """Search products by name or SKU."""
         return await self._get("/products/search", {"query": query, "limit": limit})
-
-    # ═══════════════════════════════════════════════════════════════════
-    # SALES
-    # ═══════════════════════════════════════════════════════════════════
 
     async def get_sales_report(
         self,
@@ -133,10 +118,6 @@ class BackendClient:
             {"startDate": start_date, "endDate": end_date},
         )
 
-    # ═══════════════════════════════════════════════════════════════════
-    # CATEGORIES & SUPPLIERS
-    # ═══════════════════════════════════════════════════════════════════
-
     async def get_categories(self) -> dict[str, Any]:
         """Get all categories with product counts."""
         return await self._get("/categories")
@@ -145,14 +126,9 @@ class BackendClient:
         """Get all suppliers with product counts."""
         return await self._get("/suppliers")
 
-    # ═══════════════════════════════════════════════════════════════════
-    # USERS
-    # ═══════════════════════════════════════════════════════════════════
-
     async def get_users(self) -> dict[str, Any]:
         """Get all users. Requires ADMIN role."""
         return await self._get("/users")
-
 
 async def close_backend_client() -> None:
     """Close the shared httpx client on shutdown."""
@@ -161,3 +137,4 @@ async def close_backend_client() -> None:
         await _client.aclose()
         _client = None
         print("🔌 Backend HTTP client closed")
+

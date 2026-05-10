@@ -9,26 +9,146 @@ import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
+import { CreateStoreDto } from './dto/create-store.dto';
 
-/** Maksimum percobaan login gagal sebelum akun dikunci */
 const MAX_FAILED_ATTEMPTS = 5;
-/** Durasi penguncian akun dalam menit setelah melebihi batas */
+
 const LOCK_DURATION_MINUTES = 30;
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly ACCESS_TOKEN_EXPIRES = '15m'; // 15 menit
-  private readonly REFRESH_TOKEN_EXPIRES_DAYS = 7; // 7 hari
+  private readonly ACCESS_TOKEN_EXPIRES = '15m';
+  private readonly REFRESH_TOKEN_EXPIRES_DAYS = 7;
 
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
     private prisma: PrismaService,
   ) {}
+
+  private googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+  async googleLogin(dto: GoogleLoginDto) {
+    const ticket = await this.googleClient.verifyIdToken({
+      idToken: dto.idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      throw new UnauthorizedException('Invalid Google token');
+    }
+
+    let platformUser = await this.prisma.platformUser.findUnique({
+      where: { email: payload.email },
+    });
+
+    if (!platformUser) {
+      platformUser = await this.prisma.platformUser.create({
+        data: {
+          email: payload.email,
+          name: payload.name || null,
+          googleId: payload.sub,
+        },
+      });
+      this.logger.log(`New platform user created: ${payload.email}`);
+    }
+
+    const accessToken = this.jwtService.sign(
+      {
+        sub: platformUser.id,
+        email: platformUser.email,
+        isPlatformUser: true,
+      },
+      { expiresIn: '5m' },
+    );
+
+    return {
+      accessToken,
+      user: {
+        id: platformUser.id,
+        email: platformUser.email,
+        name: platformUser.name,
+      },
+    };
+  }
+
+  async createStore(dto: CreateStoreDto, platformUserId: string) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const slug = dto.storeName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      const existingSlug = await tx.tenant.findUnique({ where: { slug } });
+      if (existingSlug) throw new ConflictException('Store name already registered');
+
+      const existingUser = await tx.tenantUser.findFirst({ where: { username: dto.username } });
+      if (existingUser) throw new ConflictException('Username already registered');
+
+      const salt = await bcrypt.genSalt(12);
+      const passwordHash = await bcrypt.hash(dto.password, salt);
+
+      const tenant = await tx.tenant.create({
+        data: { name: dto.storeName, slug, aiTokens: 10000 },
+      });
+      const tenantUser = await tx.tenantUser.create({
+        data: {
+          username: dto.username,
+          passwordHash,
+          role: 'ADMIN',
+          displayName: dto.displayName || dto.username,
+          tenantId: tenant.id,
+        },
+      });
+      await tx.tenantMember.create({
+        data: { role: 'OWNER', platformUserId, tenantId: tenant.id },
+      });
+
+      return { tenant, tenantUser };
+    });
+
+    const payload = {
+      sub: result.tenantUser.id,
+      username: result.tenantUser.username,
+      role: result.tenantUser.role,
+      tenantId: result.tenant.id,
+    };
+
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const rawRefreshToken = crypto.randomBytes(40).toString('hex');
+    const hashedRefreshToken = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
+    const refreshExpiresAt = new Date();
+    refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        token: hashedRefreshToken,
+        userId: result.tenantUser.id,
+        expiresAt: refreshExpiresAt,
+      },
+    });
+
+    this.logger.log(`Store created: ${result.tenant.name} by platform user ${platformUserId}`);
+
+    return {
+      message: 'Store created successfully',
+      accessToken,
+      refreshToken: rawRefreshToken,
+      user: {
+        id: result.tenantUser.id,
+        username: result.tenantUser.username,
+        role: result.tenantUser.role,
+        tenantId: result.tenant.id,
+        storeName: result.tenant.name,
+      },
+    };
+  }
 
   async login(loginDto: LoginDto) {
     const user = await this.usersService.findByUsernameOrEmail(loginDto.username);
@@ -37,7 +157,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // ── BRUTE FORCE CHECK ──────────────────────────────────────────
     if (this.isAccountLocked(user.lockedUntil)) {
       const remainingMinutes = Math.ceil((user.lockedUntil!.getTime() - Date.now()) / 60000);
       this.logger.warn(
@@ -51,12 +170,10 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.passwordHash);
 
     if (!isPasswordValid) {
-      // ── TRACK FAILED ATTEMPTS ──────────────────────────────────
       await this.incrementFailedAttempts(user.id);
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // ── RESET ON SUCCESS ───────────────────────────────────────────
     if (user.failedLoginAttempts > 0) {
       await this.prisma.tenantUser.update({
         where: { id: user.id },
@@ -71,18 +188,15 @@ export class AuthService {
       tenantId: user.tenantId,
     };
 
-    // Generate access token dengan expiry
     const access_token = this.jwtService.sign(payload, {
       expiresIn: this.ACCESS_TOKEN_EXPIRES,
     });
 
-    // Generate refresh token — SIMPAN HASH, KEMBALIKAN RAW
     const rawRefreshToken = crypto.randomBytes(40).toString('hex');
     const hashedRefreshToken = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
     const refreshExpiresAt = new Date();
     refreshExpiresAt.setDate(refreshExpiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_DAYS);
 
-    // Simpan HASH refresh token ke database
     await this.prisma.refreshToken.create({
       data: {
         token: hashedRefreshToken,
@@ -106,10 +220,8 @@ export class AuthService {
   }
 
   async refreshAccessToken(refreshToken: string) {
-    // Hash token yang masuk untuk pencocokan database
     const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
 
-    // Cari refresh token yang valid dan belum expired
     const storedToken = await this.prisma.refreshToken.findUnique({
       where: { token: hashedToken },
       include: { user: true },
@@ -127,13 +239,11 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token has expired');
     }
 
-    // Revoke old token (rotation)
     await this.prisma.refreshToken.update({
       where: { id: storedToken.id },
       data: { revokedAt: new Date() },
     });
 
-    // Generate new access token
     const payload = {
       username: storedToken.user.username,
       sub: storedToken.user.id,
@@ -145,7 +255,6 @@ export class AuthService {
       expiresIn: this.ACCESS_TOKEN_EXPIRES,
     });
 
-    // Generate new refresh token — SIMPAN HASH, KEMBALIKAN RAW
     const newRawToken = crypto.randomBytes(40).toString('hex');
     const newHashedToken = crypto.createHash('sha256').update(newRawToken).digest('hex');
     const refreshExpiresAt = new Date();
@@ -168,8 +277,6 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const { storeName, username, email, password, displayName } = registerDto;
 
-    // ── CEK DUPLIKAT ──────────────────────────────────────────────
-    // Cek apakah email platform user sudah terdaftar
     const existingPlatformUser = await this.prisma.platformUser.findUnique({
       where: { email },
     });
@@ -177,7 +284,6 @@ export class AuthService {
       throw new ConflictException('Email sudah terdaftar');
     }
 
-    // Cek apakah slug tenant sudah dipakai
     const slug = storeName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -189,7 +295,6 @@ export class AuthService {
       throw new ConflictException('Nama toko sudah terdaftar');
     }
 
-    // Cek apakah username sudah dipakai di tenant manapun
     const existingUsername = await this.prisma.tenantUser.findFirst({
       where: { username },
     });
@@ -197,11 +302,9 @@ export class AuthService {
       throw new ConflictException('Username sudah terdaftar');
     }
 
-    // ── HASH PASSWORD ─────────────────────────────────────────────
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // ── TRANSAKSI ATOMIK ──────────────────────────────────────────
     const result = await this.prisma.$transaction(async (tx) => {
       const platformUser = await tx.platformUser.create({
         data: {
@@ -243,7 +346,6 @@ export class AuthService {
       `New registration: store="${result.tenant.name}", user="${result.tenantUser.username}"`,
     );
 
-    // ── GENERATE TOKEN ────────────────────────────────────────────
     const payload = {
       username: result.tenantUser.username,
       sub: result.tenantUser.id,
@@ -295,24 +397,11 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
-  // ── PRIVATE HELPERS ───────────────────────────────────────────────
-
-  /**
-   * Mengecek apakah akun sedang terkunci berdasarkan timestamp lockedUntil.
-   */
   private isAccountLocked(lockedUntil: Date | null): boolean {
     if (!lockedUntil) return false;
     return new Date() < lockedUntil;
   }
 
-  /**
-   * Mencatat percobaan login gagal. Jika melebihi batas, kunci akun.
-   *
-   * Logika:
-   * 1. Increment failedLoginAttempts
-   * 2. Jika mencapai MAX_FAILED_ATTEMPTS, set lockedUntil = now + LOCK_DURATION
-   * 3. Reset counter jika window waktu sudah berlalu (reset ke 1)
-   */
   private async incrementFailedAttempts(userId: string): Promise<void> {
     const user = await this.prisma.tenantUser.findUnique({
       where: { id: userId },

@@ -64,6 +64,7 @@ model TenantUser {
   passwordHash        String
   role                TenantRole @default(STAFF)
   displayName         String?
+  email               String?
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
   createdAt           DateTime @default(now())
@@ -81,13 +82,11 @@ model TenantUser {
 
   @@unique([tenantId, username])
   @@index([username, deletedAt])
+  @@index([email, deletedAt])
   @@index([tenantId, role])
   @@map("tenant_users")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// PLATFORM USER — User global untuk login ke platform (Google/Email)
-// ═══════════════════════════════════════════════════════════════════════
 
 model PlatformUser {
   id             String   @id @default(uuid())
@@ -160,9 +159,6 @@ model Product {
   @@map("products")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// CATEGORY — Terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 model Category {
   id          String    @id @default(uuid())
@@ -179,9 +175,6 @@ model Category {
   @@map("categories")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SUPPLIER — Terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 model Supplier {
   id             String          @id @default(uuid())
@@ -202,9 +195,6 @@ model Supplier {
   @@map("suppliers")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// STOCK TRANSACTION — Terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 enum TransactionType {
   IN
@@ -235,9 +225,6 @@ model StockTransaction {
   @@map("stock_transactions")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// PURCHASE ORDER — Terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 enum PurchaseOrderStatus {
   PENDING

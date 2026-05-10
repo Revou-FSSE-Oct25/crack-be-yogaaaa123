@@ -75,13 +75,11 @@ export class AuditLogInterceptor implements NestInterceptor {
     const tenantId = user?.tenantId;
     const action = this.methodActionMap[method] || ActivityAction.UPDATE;
 
-    // Capture before-state snapshot BEFORE handler mutates
     let beforeState: Record<string, unknown> | null = null;
     const needsSnapshot = ['PATCH', 'PUT', 'DELETE'].includes(method) && entityId && tenantId;
 
     return next.handle().pipe(
       tap({
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         next: (responseBody) => {
           (async () => {
             try {
@@ -128,9 +126,7 @@ export class AuditLogInterceptor implements NestInterceptor {
             } catch (err) {
               this.logger.error(`Failed to log audit activity: ${err.message}`, err.stack);
             }
-          })().catch(() => {
-            /* Prevent unhandled rejection from propagating to RxJS */
-          });
+          })().catch(() => {});
         },
         error: () => {},
       }),

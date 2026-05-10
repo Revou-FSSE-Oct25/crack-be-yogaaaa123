@@ -29,7 +29,6 @@ export class InventoryService {
       where: { id: productId },
     });
 
-    // Determine the operation based on type and quantityChange.
     let operation: 'increment' | 'decrement' = 'increment';
     const absoluteChange = Math.abs(quantityChange);
 
@@ -38,12 +37,10 @@ export class InventoryService {
     } else if (type === TransactionType.IN) {
       operation = 'increment';
     } else {
-      // ADJUSTMENT: if quantityChange is negative, we decrement.
       operation = quantityChange < 0 ? 'decrement' : 'increment';
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Atomic stock validation: only decrement if stock is sufficient
       if (operation === 'decrement') {
         let updatedProduct;
         try {
@@ -68,7 +65,6 @@ export class InventoryService {
           throw error;
         }
 
-        // Create stock transaction
         const transaction = await tx.stockTransaction.create({
           data: {
             type,
@@ -84,7 +80,6 @@ export class InventoryService {
         return { transaction, product: updatedProduct };
       }
 
-      // For increment operations, just update directly
       const updatedProduct = await tx.product.update({
         where: { id: productId, tenantId },
         data: {
@@ -94,7 +89,6 @@ export class InventoryService {
         },
       });
 
-      // Create stock transaction
       const transaction = await tx.stockTransaction.create({
         data: {
           type,
@@ -109,6 +103,71 @@ export class InventoryService {
 
       return { transaction, product: updatedProduct };
     });
+  }
+
+  async aiProductInput(
+    products: {
+      sku: string;
+      name: string;
+      price: string;
+      stockQuantity?: number;
+      reorderLevel?: number;
+      categoryName?: string;
+      supplierName?: string;
+    }[],
+    tenantId: string,
+  ) {
+    const prisma = this.prisma.getClient(tenantId);
+    const created: Record<string, unknown>[] = [];
+    const warnings: string[] = [];
+    let skipped = 0;
+
+    for (const item of products) {
+      const existing = await prisma.product.findUnique({
+        where: { tenantId_sku: { tenantId, sku: item.sku } },
+      });
+      if (existing) {
+        warnings.push(`SKU ${item.sku} already exists`);
+        skipped++;
+        continue;
+      }
+
+      let categoryId: string | undefined;
+      if (item.categoryName) {
+        const cat = await prisma.category.upsert({
+          where: { tenantId_name: { tenantId, name: item.categoryName } },
+          create: { name: item.categoryName, tenantId },
+          update: {},
+        });
+        categoryId = cat.id;
+      }
+
+      let supplierId: string | undefined;
+      if (item.supplierName) {
+        const sup = await prisma.supplier.upsert({
+          where: { tenantId_name: { tenantId, name: item.supplierName } },
+          create: { name: item.supplierName, tenantId },
+          update: {},
+        });
+        supplierId = sup.id;
+      }
+
+      const product = await prisma.product.create({
+        data: {
+          sku: item.sku,
+          name: item.name,
+          price: item.price,
+          stockQuantity: item.stockQuantity ?? 0,
+          reorderLevel: item.reorderLevel ?? 10,
+          categoryId,
+          supplierId,
+          tenantId,
+        },
+      });
+      created.push(product);
+    }
+
+    return { created: created.length, skipped, warnings, products: created };
   }
 
   async checkStockAvailability(productId: string, requestedQuantity: number, tenantId: string) {
@@ -153,10 +212,6 @@ export class InventoryService {
     };
   }
 
-  /**
-   * Get all products where stockQuantity <= reorderLevel.
-   * Uses raw SQL because Prisma ORM doesn't support column-to-column comparison.
-   */
   async getLowStockProducts(tenantId: string): Promise<LowStockProduct[]> {
     return this.prisma.$queryRaw<LowStockProduct[]>(
       Prisma.sql`

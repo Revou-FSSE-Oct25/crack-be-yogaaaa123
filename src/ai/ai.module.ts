@@ -11,8 +11,8 @@ import { PrismaModule } from '../prisma.module';
       timeout: 60000,
       maxRedirects: 0,
     }),
-    AuthModule, // Needed by JwtAuthGuard
-    PrismaModule, // Needed by AiService for AI token check
+    AuthModule,
+    PrismaModule,
   ],
   controllers: [AiController],
   providers: [AiService],

@@ -8,7 +8,6 @@ from typing import Any
 from database import get_pool
 from tools import cap, validate_entity
 
-
 async def get_users(user_id: str, role: str, tenant_id: str) -> dict[str, Any]:
     """List users/cashiers. ADMIN only. Tenant isolated."""
     if role != "ADMIN":
@@ -34,7 +33,6 @@ async def get_users(user_id: str, role: str, tenant_id: str) -> dict[str, Any]:
             for r in rows
         ],
     }
-
 
 async def get_activity_logs(
     user_id: str, role: str, tenant_id: str,
@@ -74,3 +72,4 @@ async def get_activity_logs(
             for r in rows
         ],
     }
+

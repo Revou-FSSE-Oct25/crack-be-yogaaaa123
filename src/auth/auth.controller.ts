@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Req,
   Res,
+  UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as crypto from 'node:crypto';
@@ -14,9 +15,12 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
+import { CreateStoreDto } from './dto/create-store.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { PlatformJwtGuard } from '../common/guards/platform-jwt.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -51,7 +55,7 @@ Mendaftarkan toko baru secara otomatis dengan fitur:
 5 percobaan per 60 detik per IP
     `,
   })
-  @ApiBody({ 
+  @ApiBody({
     type: RegisterDto,
     examples: {
       example1: {
@@ -61,10 +65,10 @@ Mendaftarkan toko baru secara otomatis dengan fitur:
           username: 'admin_toko1',
           email: 'admin@tokosembako.com',
           password: 'SecurePass123',
-          displayName: 'Admin Toko'
-        }
-      }
-    }
+          displayName: 'Admin Toko',
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 201,
@@ -87,17 +91,17 @@ Mendaftarkan toko baru secara otomatis dengan fitur:
       },
     },
   })
-  @ApiResponse({ 
-    status: 400, 
-    description: '❌ Validation error - Password tidak memenuhi requirements' 
+  @ApiResponse({
+    status: 400,
+    description: '❌ Validation error - Password tidak memenuhi requirements',
   })
-  @ApiResponse({ 
-    status: 409, 
-    description: '⚠️ Conflict - Email/username/nama toko sudah terdaftar' 
+  @ApiResponse({
+    status: 409,
+    description: '⚠️ Conflict - Email/username/nama toko sudah terdaftar',
   })
-  @ApiResponse({ 
-    status: 429, 
-    description: '🚫 Too Many Requests - Rate limit exceeded' 
+  @ApiResponse({
+    status: 429,
+    description: '🚫 Too Many Requests - Rate limit exceeded',
   })
   async register(@Body() registerDto: RegisterDto, @Res({ passthrough: true }) res: any) {
     const result = await this.authService.register(registerDto);
@@ -111,9 +115,52 @@ Mendaftarkan toko baru secara otomatis dengan fitur:
   }
 
   @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ auth: { ttl: 60000, limit: 5 } })
+  @ApiOperation({
+    summary: 'Login via Google OAuth',
+    description: 'Verify Google ID token and create/return platform user.',
+  })
+  @ApiBody({ type: GoogleLoginDto })
+  @ApiResponse({ status: 200, description: 'Google login successful' })
+  @ApiResponse({ status: 401, description: 'Invalid Google token' })
+  async googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.authService.googleLogin(dto);
+  }
+
+  @Post('create-store')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(PlatformJwtGuard)
+  @Throttle({ auth: { ttl: 60000, limit: 3 } })
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Create store after Google login',
+    description: 'Requires platform JWT from /auth/google.',
+  })
+  @ApiBody({ type: CreateStoreDto })
+  @ApiResponse({ status: 201, description: 'Store created' })
+  @ApiResponse({ status: 401, description: 'Invalid or missing platform JWT' })
+  @ApiResponse({ status: 409, description: 'Store name or username already taken' })
+  async createStore(
+    @Body() dto: CreateStoreDto,
+    @CurrentUser('id') platformUserId: string,
+    @Res({ passthrough: true }) res: any,
+  ) {
+    const result = await this.authService.createStore(dto, platformUserId);
+    const cookieOpts = this.getCookieOptions();
+    res.cookie('auth_token', result.accessToken, { ...cookieOpts, maxAge: 15 * 60 * 1000 });
+    res.cookie('refresh_token', result.refreshToken, {
+      ...cookieOpts,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return { message: result.message, user: result.user };
+  }
+
+  @Public()
   @Get('csrf-token')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: '🛡️ Get CSRF token',
     description: `
 Mendapatkan CSRF token untuk proteksi terhadap Cross-Site Request Forgery.
@@ -150,7 +197,7 @@ fetch('/products', {
   body: JSON.stringify(data)
 });
 \`\`\`
-    `
+    `,
   })
   @ApiResponse({
     status: 200,
@@ -160,17 +207,17 @@ fetch('/products', {
         description: 'Non-HttpOnly CSRF token cookie',
         schema: {
           type: 'string',
-          example: 'csrf_token=abc123...; Path=/; SameSite=Lax'
-        }
-      }
+          example: 'csrf_token=abc123...; Path=/; SameSite=Lax',
+        },
+      },
     },
-    schema: { 
+    schema: {
       example: {
         statusCode: 200,
         message: 'Success',
         data: { csrf_token: 'a1b2c3d4e5f6...' },
-        timestamp: '2026-05-05T10:30:00.000Z'
-      }
+        timestamp: '2026-05-05T10:30:00.000Z',
+      },
     },
   })
   getCsrfToken(@Res({ passthrough: true }) res: any) {
@@ -217,17 +264,17 @@ Login dengan username dan password untuk mendapatkan akses ke API.
 Akun terkunci 30 menit setelah 5 failed attempts
     `,
   })
-  @ApiBody({ 
+  @ApiBody({
     type: LoginDto,
     examples: {
       example1: {
         summary: 'Login sebagai admin',
         value: {
           username: 'admin1',
-          password: 'password123'
-        }
-      }
-    }
+          password: 'password123',
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 200,
@@ -237,9 +284,9 @@ Akun terkunci 30 menit setelah 5 failed attempts
         description: 'HttpOnly cookies for authentication',
         schema: {
           type: 'string',
-          example: 'auth_token=eyJhbGc...; Path=/; HttpOnly; SameSite=Lax'
-        }
-      }
+          example: 'auth_token=eyJhbGc...; Path=/; HttpOnly; SameSite=Lax',
+        },
+      },
     },
     schema: {
       example: {
@@ -257,17 +304,17 @@ Akun terkunci 30 menit setelah 5 failed attempts
       },
     },
   })
-  @ApiResponse({ 
-    status: 401, 
-    description: '❌ Unauthorized - Invalid credentials' 
+  @ApiResponse({
+    status: 401,
+    description: '❌ Unauthorized - Invalid credentials',
   })
-  @ApiResponse({ 
-    status: 403, 
-    description: '🔒 Forbidden - Account locked' 
+  @ApiResponse({
+    status: 403,
+    description: '🔒 Forbidden - Account locked',
   })
-  @ApiResponse({ 
-    status: 429, 
-    description: '🚫 Too Many Requests - Rate limit exceeded' 
+  @ApiResponse({
+    status: 429,
+    description: '🚫 Too Many Requests - Rate limit exceeded',
   })
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: any) {
     const result = await this.authService.login(loginDto);

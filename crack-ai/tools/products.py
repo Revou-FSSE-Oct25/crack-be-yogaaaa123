@@ -16,7 +16,6 @@ from tools import cap
 
 MAX_SEARCH_QUERY_LENGTH = 200
 
-
 async def get_low_stock_products(
     user_id: str,
     role: str,
@@ -55,7 +54,6 @@ async def get_low_stock_products(
             for r in rows
         ],
     }
-
 
 async def get_top_products(
     user_id: str,
@@ -111,7 +109,6 @@ async def get_top_products(
         ],
     }
 
-
 async def search_products(
     user_id: str,
     role: str,
@@ -120,7 +117,7 @@ async def search_products(
     limit: int | None = None,
 ) -> dict[str, Any]:
     """Search products by name or SKU (case-insensitive). Tenant isolated."""
-    # Input validation and sanitization
+
     if not query or not query.strip():
         return {"error": "Search query cannot be empty.", "count": 0, "products": []}
 
@@ -128,7 +125,6 @@ async def search_products(
     if len(query) > MAX_SEARCH_QUERY_LENGTH:
         return {"error": f"Search query too long. Maximum {MAX_SEARCH_QUERY_LENGTH} characters.", "count": 0, "products": []}
 
-    # Parameterized query is safe from SQL injection (asyncpg uses $1, $2 placeholders)
     safe_limit = cap(limit, default=10)
     search_pattern = f"%{query}%"
     pool = await get_pool()
@@ -165,3 +161,4 @@ async def search_products(
             for r in rows
         ],
     }
+

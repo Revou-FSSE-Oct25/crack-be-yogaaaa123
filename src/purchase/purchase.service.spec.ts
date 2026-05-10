@@ -54,8 +54,8 @@ describe('PurchaseService', () => {
       const mockProducts = [
         {
           id: 'prod-1',
-          stockQuantity: 10, // existing stock
-          averageCost: new Prisma.Decimal('80.00'), // existing avg cost
+          stockQuantity: 10,
+          averageCost: new Prisma.Decimal('80.00'),
         },
       ];
 

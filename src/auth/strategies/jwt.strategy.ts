@@ -11,6 +11,7 @@ interface JwtPayload {
   role: string;
   tenantId?: string;
   isSuperAdmin?: boolean;
+  isPlatformUser?: boolean;
 }
 
 @Injectable()
@@ -22,7 +23,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
     super({
       jwtFromRequest: (req: Request) => {
-        // Try cookie first, fall back to Authorization header
         if (req?.cookies?.auth_token) {
           return req.cookies.auth_token;
         }
@@ -44,7 +44,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       };
     }
 
-    // Regular tenant user validation
+    if (payload.isPlatformUser) {
+      return {
+        id: payload.sub,
+        username: payload.username || '',
+        role: 'PLATFORM_USER',
+        tenantId: '',
+        isPlatformUser: true,
+      };
+    }
+
     const user = await this.usersService.findOne(payload.sub, payload.tenantId || '');
     if (!user) {
       throw new UnauthorizedException();

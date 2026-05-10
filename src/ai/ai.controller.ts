@@ -2,7 +2,7 @@ import {
   Controller,
   Post,
   Body,
-  Headers,
+  Req,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -36,17 +36,6 @@ import {
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
-  /**
-   * POST /ai/chat
-   * Proxies chat request to Python AI service with JWT token.
-   *
-   * JWT AUTH: Protected by @UseGuards(JwtAuthGuard) — validates JWT via Passport.
-   * The raw JWT token is extracted from the Authorization header to be
-   * forwarded to the Python AI service (for audit trail / user context).
-   * @CurrentUser() provides the decoded user info.
-   *
-   * RATE LIMIT: 10 req / 60s (AI calls are expensive — LLM API costs)
-   */
   @Post('chat')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -93,20 +82,14 @@ Kirim pesan ke AI asisten untuk bertanya tentang data bisnis secara real-time.
   async chat(
     @Body() body: AiChatRequestDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Headers('authorization') authHeader?: string,
+    @Req() req: any,
   ) {
-    if (!authHeader) {
-      throw new UnauthorizedException('Missing Authorization header');
+    const token = req.cookies?.auth_token;
+    if (!token) {
+      throw new UnauthorizedException('Missing auth_token cookie');
     }
 
-    const token = authHeader.replace('Bearer ', '');
-
-    const result = await this.aiService.chat(
-      body.message,
-      body.history || [],
-      token,
-      user, // ← untuk audit trail / logging
-    );
+    const result = await this.aiService.chat(body.message, body.history || [], token, user);
 
     return result;
   }

@@ -6,7 +6,6 @@ No hardcoded defaults for secrets — they MUST be set in environment.
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -14,35 +13,25 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database — same as NestJS backend
     database_url: str
 
-    # JWT — must match exactly with JWT_SECRET in NestJS
     jwt_secret: str
     jwt_algorithm: str = "HS256"
 
-    # Internal API Key — used by NestJS backend to authenticate with AI
-    # MUST be set in environment! No default for security.
-    # In production, use: openssl rand -hex 32
-    internal_api_key: str  # ← NO DEFAULT! Must be set in .env
+    internal_api_key: str
 
-    # LLM provider (OpenAI-compatible)
     llm_api_key: str
     llm_base_url: str = "https://api.deepseek.com"
     llm_model: str = "deepseek-chat"
 
-    # NestJS Backend — AI service fetches data via HTTP instead of direct DB
     backend_url: str = "http://localhost:8000"
-    backend_internal_api_key: str = ""  # Must match AI_INTERNAL_API_KEY in NestJS .env
+    backend_internal_api_key: str = ""
 
-    # Server
     port: int = 8001
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
 
-    # Hard security limit: AI cannot request more data than this
     max_query_limit: int = 50
 
-    # Max input length for AI queries (character limit)
     max_query_length: int = 2000
 
     @field_validator("internal_api_key")
@@ -79,5 +68,5 @@ class Settings(BaseSettings):
             )
         return v
 
-
 settings = Settings()
+

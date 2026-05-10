@@ -18,7 +18,6 @@ from typing import Any
 
 from config import settings
 
-# ─── Tool Dispatcher ───────────────────────────────────────────────────────────
 async def execute_tool(
     tool_name: str,
     user_id: str,
@@ -73,16 +72,12 @@ async def execute_tool(
     except Exception as e:
         return {"error": f"An internal error occurred: {str(e)}"}
 
-
-# ─── Safe LIMIT ────────────────────────────────────────────────────────────────
 def cap(value: int | None, default: int = 20) -> int:
     """Ensure LIMIT never exceeds the hard maximum (configurable via max_query_limit)."""
     if value is None:
         return min(default, settings.max_query_limit)
     return max(1, min(int(value), settings.max_query_limit))
 
-
-# ─── UUID Validation ──────────────────────────────────────────────────────────
 def validate_uuid(value: str, name: str = "id") -> str:
     """Validate that a string is a valid UUID. Raises ValueError if not."""
     try:
@@ -91,11 +86,8 @@ def validate_uuid(value: str, name: str = "id") -> str:
         raise ValueError(f"Invalid UUID format for '{name}': {value}")
     return value
 
-
-# ─── String Whitelist Validators ──────────────────────────────────────────────
 VALID_STATUSES = frozenset({"PENDING", "RECEIVED", "CANCELLED"})
 VALID_TRANSACTION_TYPES = frozenset({"IN", "OUT", "ADJUSTMENT", "RETURN"})
-
 
 def validate_status(status: str) -> str:
     """Validate purchase order status against whitelist."""
@@ -107,7 +99,6 @@ def validate_status(status: str) -> str:
         )
     return s
 
-
 def validate_transaction_type(txn_type: str) -> str:
     """Validate stock transaction type against whitelist."""
     t = txn_type.strip().upper()
@@ -118,17 +109,14 @@ def validate_transaction_type(txn_type: str) -> str:
         )
     return t
 
-
-# ─── Entity Validation (for activity_logs filter) ─────────────────────────────
 VALID_ENTITIES = frozenset({
     "Product", "SalesOrder", "PurchaseOrder", "User", "Supplier",
     "Category", "StockTransaction", "SalesReturn", "Inventory",
 })
 
-
 def validate_entity(entity: str) -> str:
     """Validate activity log entity name (case-insensitive)."""
-    # Capitalize first letter for comparison
+
     e = entity.strip().capitalize()
     if e not in VALID_ENTITIES:
         raise ValueError(
@@ -137,12 +125,9 @@ def validate_entity(entity: str) -> str:
         )
     return e
 
-
-# ─── Date Validation ──────────────────────────────────────────────────────────
 import re
 
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
 
 def validate_date(date_str: str, name: str = "date") -> str:
     """Validate YYYY-MM-DD date format."""
@@ -150,12 +135,7 @@ def validate_date(date_str: str, name: str = "date") -> str:
         raise ValueError(f"Invalid {name} format '{date_str}'. Use YYYY-MM-DD.")
     return date_str
 
-
-# ─── Safe Dynamic WHERE Builder ───────────────────────────────────────────────
-# Solves issue #2: Instead of string interpolation for conditions,
-# this builder ensures ALL dynamic values use parameterized queries ($1, $2, ...)
-WhereClause = tuple[str, list[Any]]  # (WHERE clause, params list)
-
+WhereClause = tuple[str, list[Any]]
 
 def build_where(params: list[Any], condition: str, value: Any) -> int:
     """
@@ -179,7 +159,6 @@ def build_where(params: list[Any], condition: str, value: Any) -> int:
     params.append(value)
     return len(params)
 
-
 def combine_where(conditions: list[str], initial: str = "TRUE") -> str:
     """
     Combine a list of conditions with AND.
@@ -198,3 +177,4 @@ def combine_where(conditions: list[str], initial: str = "TRUE") -> str:
     if not conditions:
         return initial
     return " AND ".join(conditions)
+

@@ -16,7 +16,7 @@ import { TenantRole } from '@prisma/client';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 @ApiTags('upload')
 @ApiBearerAuth()

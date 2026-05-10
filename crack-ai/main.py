@@ -21,10 +21,11 @@ SECURITY STARTUP:
 """
 import time
 import uuid
+import json
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -35,23 +36,18 @@ from config import settings
 from database import close_db, init_db
 from backend_client import close_backend_client
 from logging_config import get_logger, setup_logging
-from schemas import ChatRequest, ChatResponse
+from schemas import ChatRequest, ChatResponse, ProductFromImageResponse, ProductImageItem
 import ai_service
+from ai_service import client
 
-# Initialize structured logging
 setup_logging()
 logger = get_logger(__name__)
 
-
-# ─── Rate Limiter ──────────────────────────────────────────────────────────────
-# Limits /chat to 10 req/min per IP (LLM API costs $$$)
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["20/minute"],  # global default
+    default_limits=["20/minute"],
 )
 
-
-# ─── Startup Security Validation ──────────────────────────────────────────────
 def _validate_startup_security() -> None:
     """
     Validate security-critical settings on service startup.
@@ -66,7 +62,6 @@ def _validate_startup_security() -> None:
     """
     errors: list[str] = []
 
-    # Check 1-3: INTERNAL_API_KEY
     if not settings.internal_api_key:
         errors.append(
             "SECURITY: INTERNAL_API_KEY is not set! "
@@ -84,14 +79,12 @@ def _validate_startup_security() -> None:
             "Minimum 16 characters required. Generate with: openssl rand -hex 32"
         )
 
-    # Check 4: JWT_SECRET must not be example value
     if settings.jwt_secret in ("super-secret-dont-share-123", "secret", "changeme", "password"):
         errors.append(
             "SECURITY: JWT_SECRET appears to be a weak/example value! "
             "Use a strong random secret matching the NestJS backend."
         )
 
-    # Check 5: LLM_API_KEY
     if not settings.llm_api_key:
         errors.append(
             "SECURITY: LLM_API_KEY is not set! "
@@ -106,8 +99,6 @@ def _validate_startup_security() -> None:
 
     logger.info("Startup security validation passed")
 
-
-# ─── Request ID Middleware (Observability) ─────────────────────────────────────
 async def request_id_middleware(request: Request, call_next):
     """
     Middleware that:
@@ -119,11 +110,10 @@ async def request_id_middleware(request: Request, call_next):
 
     This enables end-to-end tracing: User → NestJS → AI → DB → LLM → Response
     """
-    # Use forwarded ID or generate new one
+
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     request.state.request_id = request_id
 
-    # Log request start with context
     start_time = time.time()
     logger.info(
         "Request started",
@@ -133,10 +123,8 @@ async def request_id_middleware(request: Request, call_next):
         ip=get_remote_address(request),
     )
 
-    # Process request
     response = await call_next(request)
 
-    # Log request completion
     elapsed_ms = round((time.time() - start_time) * 1000, 1)
     logger.info(
         "Request completed",
@@ -145,18 +133,14 @@ async def request_id_middleware(request: Request, call_next):
         elapsed_ms=elapsed_ms,
     )
 
-    # Forward request ID to response headers
     response.headers["X-Request-Id"] = request_id
     return response
 
-
-# ─── Lifespan ───────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Starting CrackPOS AI Service...")
 
-    # SECURITY: Validate on every startup
     _validate_startup_security()
 
     await init_db()
@@ -165,8 +149,6 @@ async def lifespan(app: FastAPI):
     await close_db()
     await close_backend_client()
 
-
-# ─── App ────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="CrackPOS AI Service",
     description="AI Assistant for CrackPOS inventory system with tool-based data retrieval",
@@ -174,11 +156,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Rate limiter
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS — allow frontend to access AI service
 cors_origins = [o.strip() for o in settings.cors_origins.split(",")]
 app.add_middleware(
     CORSMiddleware,
@@ -188,11 +168,8 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Internal-API-Key", "X-Request-Id"],
 )
 
-# Request ID middleware
 app.middleware("http")(request_id_middleware)
 
-
-# ─── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health_check():
     """
@@ -228,6 +205,50 @@ async def health_check():
         "response_time_ms": elapsed_ms,
     }
 
+@app.post(
+    "/ai/product-from-image",
+    response_model=ProductFromImageResponse,
+    tags=["AI"],
+    summary="Identify products from image (ADMIN only)",
+    description="""
+    ADMIN only. Upload an image of products, AI returns structured product list.
+    Products are NOT created — returned as preview for admin to review and confirm.
+    """,
+)
+@limiter.limit("5/minute")
+async def product_from_image(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> ProductFromImageResponse:
+    if current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Only ADMIN can use this feature")
+
+    image_bytes = await file.read()
+    import base64
+    image_b64 = base64.b64encode(image_bytes).decode()
+
+    response = await client.chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": "You identify products from images. Return ONLY valid JSON array: [{name, estimatedQuantity (int), confidence (high/medium/low), suggestedPrice (float or null), suggestedCategory (string or null)}]. If no products visible, return []."},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                {"type": "text", "text": "Identify all products visible in this image."}
+            ]}
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=1024,
+    )
+
+    raw = response.choices[0].message.content or "{}"
+    data = json.loads(raw)
+    items = data.get("products") or data.get("items") or ([] if isinstance(data, list) else [data])
+    if isinstance(items, dict):
+        items = [items]
+
+    products = [ProductImageItem(**item) for item in items]
+    return ProductFromImageResponse(products=products)
 
 @app.post(
     "/chat",
@@ -245,9 +266,9 @@ async def health_check():
     - AI can only read data according to the logged-in user's access rights
     """,
 )
-@limiter.limit("10/minute")  # Rate limit: 10 req/min per IP
+@limiter.limit("10/minute")
 async def chat_endpoint(
-    request: Request,  # Required by slowapi
+    request: Request,
     body: ChatRequest,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ChatResponse:
@@ -262,7 +283,6 @@ async def chat_endpoint(
     request_id = getattr(request.state, "request_id", "unknown")
 
     try:
-        # Build history format for LLM
         llm_history = [
             {"role": msg.role, "parts": [{"text": part} for part in msg.parts]}
             for msg in body.history
@@ -271,12 +291,27 @@ async def chat_endpoint(
         result = await ai_service.chat(
             message=body.message,
             history=llm_history,
-            user_id=current_user.user_id,          # ← from JWT
-            role=current_user.role,                 # ← from JWT
-            tenant_id=current_user.tenant_id,       # ← from JWT (multi-tenant isolation)
-            username=current_user.username,         # ← from JWT
-            request_id=request_id,                  # ← for tracing
+            user_id=current_user.user_id,
+            role=current_user.role,
+            tenant_id=current_user.tenant_id,
+            username=current_user.username,
+            request_id=request_id,
         )
+
+        try:
+            from database import get_pool
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                import json
+                await conn.execute("""
+                    INSERT INTO ai_audit_logs (user_id, username, role, tenant_id, query, tools_used, response_summary, request_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """, current_user.user_id, current_user.username, current_user.role,
+                    current_user.tenant_id, body.message,
+                    json.dumps(result.get("tools_used", [])),
+                    result.get("reply", "")[:500], request_id)
+        except Exception as audit_err:
+            logger.warning("Audit log insert failed", error=str(audit_err))
 
         return ChatResponse(
             reply=result["reply"],
@@ -297,3 +332,4 @@ async def chat_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI service is experiencing issues. Please try again.",
         )
+

@@ -13,7 +13,6 @@ from typing import Any
 
 from database import get_pool
 
-
 async def get_dashboard_summary(
     user_id: str,
     role: str,
@@ -26,11 +25,7 @@ async def get_dashboard_summary(
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # ── Combined query: all counts + today/this month sales in 2 queries ──
-        # This replaces 7 separate queries with just 2
 
-        # Query 1: Aggregate counts (products, suppliers, categories, low stock)
-        # All filtered by tenant_id
         count_row = await conn.fetchrow("""
             SELECT
                 (SELECT COUNT(*) FROM products
@@ -45,7 +40,6 @@ async def get_dashboard_summary(
                  WHERE "deletedAt" IS NULL AND "stockQuantity" <= "reorderLevel" AND "tenantId" = $1) AS low_stock_count
         """, tenant_id)
 
-        # Query 2: Today's and This month's sales with dynamic user + tenant filter
         if role == "ADMIN":
             today_month_row = await conn.fetchrow("""
                 SELECT
@@ -91,3 +85,4 @@ async def get_dashboard_summary(
         "low_stock_products_count": count_row["low_stock_count"] if role == "ADMIN" else 0,
         "note": "Data has been filtered according to user role and tenant." if role != "ADMIN" else None,
     }
+

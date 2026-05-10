@@ -31,8 +31,6 @@ import {
 import { IsEmail, IsString, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-// ── DTO ──────────────────────────────────────────────────────────────
-
 class AdminLoginDto {
   @ApiProperty({ example: 'superadmin@crack.com', description: 'Email super admin' })
   @IsEmail()
@@ -43,8 +41,6 @@ class AdminLoginDto {
   @MinLength(8)
   password!: string;
 }
-
-// ── CONTROLLER ───────────────────────────────────────────────────────
 
 @ApiTags('admin')
 @Controller('admin')
@@ -57,8 +53,6 @@ export class AdminController {
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
   ) {}
-
-  // ── AUTH ───────────────────────────────────────────────────────────
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -118,8 +112,6 @@ Login khusus untuk Super Admin (developer/pemilik platform).
       },
     };
   }
-
-  // ── TENANTS ────────────────────────────────────────────────────────
 
   @Get('tenants')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -189,8 +181,6 @@ Soft delete tenant beserta semua data terkait:
   removeTenant(@Param('id') id: string) {
     return this.adminService.removeTenant(id);
   }
-
-  // ── STATISTICS ─────────────────────────────────────────────────────
 
   @Get('stats')
   @UseGuards(JwtAuthGuard, RolesGuard)

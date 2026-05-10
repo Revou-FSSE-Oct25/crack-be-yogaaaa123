@@ -1,4 +1,11 @@
-import { Injectable, Logger, HttpException, HttpStatus, BadGatewayException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  HttpStatus,
+  BadGatewayException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { AxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
@@ -32,22 +39,12 @@ export class AiService {
     this.internalApiKey = process.env.AI_INTERNAL_API_KEY || '';
   }
 
-  /**
-   * Send a chat message to the Python AI service (/chat endpoint)
-   * Uses internal API key + forwarded JWT for authentication.
-   *
-   * @param message - User's chat message
-   * @param history - Chat history (optional)
-   * @param token - Raw JWT token to forward to Python AI service
-   * @param user - Authenticated user info (for logging / audit)
-   */
   async chat(
     message: string,
     history: ChatHistoryMessage[],
     token: string,
     user?: AuthenticatedUser,
   ): Promise<AiChatResponse> {
-    // ── CEK TOKEN AI (per toko/tenant) ────────────────────────────
     if (user && !user.isSuperAdmin) {
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: user.tenantId },
@@ -66,11 +63,8 @@ export class AiService {
     }
 
     const url = `${this.aiBaseUrl}/chat`;
-
-    // Transform history from FE format ({role, content}) to Python AI format ({role, parts: [string]})
     const transformedHistory = (history || []).map((msg: ChatHistoryMessage) => {
       if (msg.parts) {
-        // Already in correct format
         return msg;
       }
       return {
@@ -92,23 +86,25 @@ export class AiService {
               'X-Internal-API-Key': this.internalApiKey,
               Authorization: `Bearer ${token}`,
             },
-            timeout: 30000, // 30 seconds timeout for AI service request
+            timeout: 30000,
           },
         ),
       );
 
       return response.data;
     } catch (error: unknown) {
-      // 1. Ambil pesan error dengan aman
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
-      
-      // 2. Pastikan dengan aman apakah ini AxiosError
-      const isAxiosError = typeof error === 'object' && error !== null && 'isAxiosError' in error && (error as AxiosError).isAxiosError;
-      
+
+      const isAxiosError =
+        typeof error === 'object' &&
+        error !== null &&
+        'isAxiosError' in error &&
+        (error as AxiosError).isAxiosError;
+
       if (isAxiosError) {
         const axiosError = error as AxiosError<{ detail?: string; message?: string }>;
-        
+
         this.logger.error(
           `AI service HTTP error [user=${user?.username || 'unknown'}]: ${axiosError.message}`,
           axiosError.response?.data || axiosError.stack,
@@ -118,7 +114,6 @@ export class AiService {
           const statusCode: number = axiosError.response.status;
           const errorData = axiosError.response.data;
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison -- HTTP status codes are HttpStatus enum values
           if (statusCode === HttpStatus.UNAUTHORIZED) {
             throw new BadGatewayException({
               statusCode: HttpStatus.BAD_GATEWAY,
@@ -137,14 +132,12 @@ export class AiService {
           );
         }
       } else {
-        // Jika error bukan dari Axios (misalnya TypeError tak terduga)
         this.logger.error(
           `AI service internal error [user=${user?.username || 'unknown'}]: ${errorMessage}`,
           errorStack,
         );
       }
 
-      // 3. Fallback aman untuk semua kondisi tanpa response (termasuk timeout dan network error)
       throw new ServiceUnavailableException({
         statusCode: HttpStatus.SERVICE_UNAVAILABLE,
         message: 'AI service is unavailable or encountered an unexpected error',

@@ -3,29 +3,25 @@ import { PrismaService } from '../prisma.service';
 import { TransactionType, SalesOrderStatus, Prisma } from '@prisma/client';
 import type { CreateSalesOrderDto as CreateSalesOrderDtoBase } from './dto/create-sales-order.dto';
 
-// Extend DTO with server-side userId (injected by controller from JWT)
 interface CreateSalesOrderData extends CreateSalesOrderDtoBase {
   userId: string;
   tenantId: string;
 }
 
-// Alias for use in internal helpers
 interface SalesOrderItem {
   productId: string;
   quantity: number;
   unitPrice: string;
 }
 
-// Shape of each item ready for DB insertion
 interface OrderItemData {
   productId: string;
   quantity: number;
   unitPrice: Prisma.Decimal;
-  cogs: Prisma.Decimal; // total COGS for this item (unitCost * quantity)
-  profitMargin: Prisma.Decimal; // total profit for this item ((unitPrice - unitCost) * quantity)
+  cogs: Prisma.Decimal;
+  profitMargin: Prisma.Decimal;
 }
 
-// Aggregated result from buildOrderItemsData
 interface OrderItemsBuildResult {
   orderItemsToCreate: OrderItemData[];
   totalCogs: Prisma.Decimal;
@@ -39,10 +35,6 @@ export class SalesService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Private helper: calculate COGS, profit, and prepare order items data.
-   * Extracted to eliminate duplication between createSalesOrder & createPendingSalesOrder.
-   */
   private async buildOrderItemsData(
     items: SalesOrderItem[],
     tx: Prisma.TransactionClient,
@@ -65,13 +57,11 @@ export class SalesService {
         throw new NotFoundException(`Product ${item.productId} not found`);
       }
 
-      const unitCost = product.averageCost; // Already Prisma.Decimal
+      const unitCost = product.averageCost;
       const itemUnitPrice = new Prisma.Decimal(item.unitPrice);
 
-      // Decimal arithmetic — no floating-point error
-      // cogs = unitCost * quantity (TOTAL cost for all quantity of this item)
       const itemCogs = unitCost.mul(item.quantity);
-      // profitMargin = (unitPrice - unitCost) * quantity (TOTAL profit for this item)
+
       const itemProfitMargin = itemUnitPrice.sub(unitCost).mul(item.quantity);
 
       totalCogs = totalCogs.add(itemCogs);
@@ -90,10 +80,6 @@ export class SalesService {
     return { orderItemsToCreate, totalCogs, totalProfit, totalPrice };
   }
 
-  /**
-   * Private helper: decrement stock and create StockTransaction OUT for each item.
-   * Uses pessimistic check within the transaction for race condition safety.
-   */
   private async processStockOut(
     items: { productId: string; quantity: number }[],
     orderNumber: string,
@@ -102,7 +88,6 @@ export class SalesService {
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     for (const item of items) {
-      // Atomic stock validation: only decrement if stock is sufficient
       let updatedProduct;
       try {
         updatedProduct = await tx.product.update({
@@ -123,7 +108,6 @@ export class SalesService {
         throw error;
       }
 
-      // Create OUT stock transaction
       await tx.stockTransaction.create({
         data: {
           type: TransactionType.OUT,
@@ -136,7 +120,6 @@ export class SalesService {
         },
       });
 
-      // Log warning ONLY if stock just dropped below reorder level
       const previousStock = updatedProduct.stockQuantity + item.quantity;
       const isJustBelowReorderLevel =
         previousStock > updatedProduct.reorderLevel &&
@@ -152,8 +135,6 @@ export class SalesService {
 
   async createSalesOrder(data: CreateSalesOrderData) {
     return this.prisma.$transaction(async (tx) => {
-      // Build order items data (COGS, profit, price) — pre-check stock omitted,
-      // pessimistic check in processStockOut is sufficient and more atomic
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
         await this.buildOrderItemsData(data.items, tx, data.tenantId);
 
@@ -171,7 +152,6 @@ export class SalesService {
         },
       });
 
-      // Decrement stock and create stock transactions
       await this.processStockOut(
         data.items,
         salesOrder.orderNumber,
@@ -186,7 +166,6 @@ export class SalesService {
 
   async createPendingSalesOrder(data: CreateSalesOrderData) {
     return this.prisma.$transaction(async (tx) => {
-      // Build order items data — no stock processing since status is PENDING
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
         await this.buildOrderItemsData(data.items, tx, data.tenantId);
 
@@ -208,14 +187,12 @@ export class SalesService {
 
   async completeSalesOrder(orderId: string, userId: string, tenantId: string) {
     return this.prisma.$transaction(async (tx) => {
-      // Atomic status check + update — prevents race conditions from concurrent requests.
       const salesOrder = await tx.salesOrder.findFirst({
         where: { id: orderId, status: 'PENDING', tenantId },
         include: { items: true },
       });
 
       if (!salesOrder) {
-        // Check if it exists at all for a more descriptive error
         const exists = await tx.salesOrder.findFirst({
           where: { id: orderId, tenantId },
           select: { id: true, status: true },
@@ -233,7 +210,6 @@ export class SalesService {
         data: { status: 'COMPLETED' },
       });
 
-      // Convert OrderItem (from DB) for stock helper
       const itemsForStockOut = salesOrder.items.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
@@ -263,7 +239,7 @@ export class SalesService {
     return prisma.salesOrder.findMany({
       where,
       skip: options?.skip,
-      take: options?.take ?? 50, // Default limit 50 to prevent unbounded queries
+      take: options?.take ?? 50,
       orderBy: { createdAt: 'desc' },
       include: {
         user: {
@@ -315,24 +291,18 @@ export class SalesService {
     return order;
   }
 
-  /**
-   * Cancel a PENDING sales order.
-   * Only PENDING orders can be cancelled — no stock impact.
-   */
   async cancelSalesOrder(orderId: string, tenantId: string) {
-    // Atomic check-and-set: only update if status is still PENDING
     const result = await this.prisma.$transaction(async (tx) => {
       const updateResult = await tx.salesOrder.updateMany({
         where: {
           id: orderId,
-          tenantId, // ← Enforce tenant scope
-          status: 'PENDING', // ← Atomic condition: only PENDING orders
+          tenantId,
+          status: 'PENDING',
         },
         data: { status: 'CANCELLED' },
       });
 
       if (updateResult.count === 0) {
-        // updateMany didn't update anything — check why
         const exists = await tx.salesOrder.findFirst({
           where: { id: orderId, tenantId },
           select: { id: true, status: true },
@@ -347,7 +317,6 @@ export class SalesService {
         );
       }
 
-      // Fetch and return the updated order for the response
       const updated = await tx.salesOrder.findFirst({
         where: { id: orderId, tenantId },
       });

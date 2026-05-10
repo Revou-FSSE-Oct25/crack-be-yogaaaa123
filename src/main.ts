@@ -6,6 +6,9 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import helmet from 'helmet';
+import * as express from 'express';
+import cookieParser from 'cookie-parser';
+import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
@@ -15,14 +18,10 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Gunakan Winston logger
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
   const logger = new Logger('Bootstrap');
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // ═══════════════════════════════════════════════════════════════════
-  // ENVIRONMENT VALIDATION — fail fast, fail loud
-  // ═══════════════════════════════════════════════════════════════════
   const requiredVars: { name: string; value: string | undefined; weakDefaults: string[] }[] = [
     {
       name: 'JWT_SECRET',
@@ -45,44 +44,66 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // COOKIE PARSER — parse cookies from request headers
-  // ═══════════════════════════════════════════════════════════════════
-  const cookieParser = require('cookie-parser');
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
   app.use(cookieParser());
 
-  // ═══════════════════════════════════════════════════════════════════
-  // HELMET — security headers (XSS, clickjacking, MIME sniffing, etc.)
-  // ═══════════════════════════════════════════════════════════════════
-  app.use(helmet());
-
-  // ═══════════════════════════════════════════════════════════════════
-  // CORS
-  // ═══════════════════════════════════════════════════════════════════
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
+  const corsOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-    : ['http://localhost:5173', 'http://localhost:3001'];
+    : ['http://localhost:3001'];
 
-  app.enableCors({
-    origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token', 'x-csrf-token'],
-    credentials: true,
-  });
-
-  // ═══════════════════════════════════════════════════════════════════
-  // GLOBAL FILTERS (order matters: specific → generic)
-  // ═══════════════════════════════════════════════════════════════════
-  const { httpAdapter } = app.get(HttpAdapterHost);
-  app.useGlobalFilters(
-    new PrismaClientExceptionFilter(httpAdapter), // Specific: Prisma errors
-    new HttpExceptionFilter(), // HTTP exceptions (401, 403, 404, etc.)
-    new AllExceptionsFilter(), // Fallback: any unhandled error
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'blob:'],
+          connectSrc: ["'self'", ...corsOrigins],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameSrc: ["'none'"],
+          upgradeInsecureRequests: isProduction ? [] : null,
+        },
+      },
+      frameguard: { action: 'deny' },
+      noSniff: true,
+    }),
   );
 
-  // ═══════════════════════════════════════════════════════════════════
-  // VALIDATION
-  // ═══════════════════════════════════════════════════════════════════
+  const corsOptions: CorsOptions = {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin || corsOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-CSRF-Token',
+      'x-refresh-token',
+      'idempotency-key',
+    ],
+    credentials: true,
+  };
+  app.enableCors(corsOptions);
+
+  const { httpAdapter } = app.get(HttpAdapterHost);
+  app.useGlobalFilters(
+    new PrismaClientExceptionFilter(httpAdapter),
+    new HttpExceptionFilter(),
+    new AllExceptionsFilter(),
+  );
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -91,17 +112,12 @@ async function bootstrap() {
     }),
   );
 
-  // ═══════════════════════════════════════════════════════════════════
-  // GLOBAL INTERCEPTORS
-  // ═══════════════════════════════════════════════════════════════════
   app.useGlobalInterceptors(new ResponseInterceptor());
 
-  // ═══════════════════════════════════════════════════════════════════
-  // SWAGGER
-  // ═══════════════════════════════════════════════════════════════════
   const config = new DocumentBuilder()
     .setTitle('CrackPOS Inventory API')
-    .setDescription(`
+    .setDescription(
+      `
 # 🔐 CrackPOS Inventory Management API
 
 Enterprise-grade inventory management system dengan multi-tenant architecture.
@@ -153,13 +169,12 @@ Semua response menggunakan format:
 - Refresh token rotation
 - Account locking setelah 5 failed attempts
 - All mutations logged untuk audit trail
-    `)
+    `,
+    )
     .setVersion('2.0.0')
     .setContact('CrackPOS Team', 'https://crackpos.com', 'support@crackpos.com')
     .setLicense('MIT', 'https://opensource.org/licenses/MIT')
-    .addServer('http://localhost:3000', 'Development Server')
-    .addServer('http://localhost:8080', 'Local Production')
-    .addServer('https://api.crackpos.com', 'Production Server')
+    .addServer('http://localhost:8080', 'CrackPOS API')
     .addBearerAuth(
       {
         type: 'http',
@@ -181,25 +196,24 @@ Semua response menggunakan format:
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document, {
-    customCss: '.swagger-ui .topbar { display: none }',
+    customCss: `
+      .swagger-ui .topbar { background: #1a3a2a; padding: 14px 20px; display: block !important; }
+      .swagger-ui .topbar .topbar-wrapper .topbar-logo { display: flex; align-items: center; gap: 10px; }
+      .swagger-ui .topbar .topbar-wrapper a:first-child { display: flex; align-items: center; gap: 10px; }
+      .swagger-ui .topbar .topbar-wrapper a span { color: #fff; font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; }
+      .swagger-ui .topbar .select-label { color: #94a3b8; font-size: 0.8rem; }
+      .swagger-ui .topbar select { background: #2d5a40; color: #e2e8f0; border: 1px solid #3a7a50; border-radius: 6px; }
+    `,
     customSiteTitle: 'CrackPOS API Docs',
     customfavIcon: '/favicon.ico',
     swaggerOptions: {
       persistAuthorization: true,
-      docExpansion: 'none',
+      docExpansion: 'list',
       filter: true,
-      showExtensions: true,
-      showCommonExtensions: true,
-      syntaxHighlight: {
-        activate: true,
-        theme: 'monokai',
-      },
+      syntaxHighlight: { activate: true, theme: 'monokai' },
     },
   });
 
-  // ═══════════════════════════════════════════════════════════════════
-  // SERVE
-  // ═══════════════════════════════════════════════════════════════════
   const port = process.env.PORT ?? 8080;
   await app.listen(port);
   logger.log(`Application is running on: http://localhost:${port}`);

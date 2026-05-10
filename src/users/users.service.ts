@@ -18,9 +18,11 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto, tenantId: string) {
-    const existingUser = await this.prisma.tenantUser.findFirst({
+    const prisma = this.prisma.getClient(tenantId);
+    const existingUser = await prisma.tenantUser.findFirst({
       where: {
-        OR: [{ username: createUserDto.username }],
+        username: createUserDto.username,
+        deletedAt: null,
       },
     });
 
@@ -40,7 +42,6 @@ export class UsersService {
       },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash: _, ...result } = user;
     return result;
   }
@@ -72,27 +73,38 @@ export class UsersService {
   }
 
   async findByUsername(username: string, tenantId?: string) {
-    // SECURITY: filter soft-deleted users — they must not be able to login
     const prisma = tenantId ? this.prisma.getClient(tenantId) : this.prisma;
-    return prisma.tenantUser.findFirst({
-      where: { username, deletedAt: null, ...(tenantId ? { tenantId } : {}) },
-    });
+    const where: any = {
+      username,
+      deletedAt: null,
+    };
+
+    if (tenantId) {
+      where.tenantId = tenantId;
+    }
+
+    return prisma.tenantUser.findFirst({ where });
   }
 
   async findByUsernameOrEmail(usernameOrEmail: string, tenantId?: string) {
-    // SECURITY: filter soft-deleted users — they must not be able to login
     const prisma = tenantId ? this.prisma.getClient(tenantId) : this.prisma;
-    return prisma.tenantUser.findFirst({
-      where: {
-        username: usernameOrEmail,
-        deletedAt: null,
-        ...(tenantId ? { tenantId } : {}),
-      },
-    });
+
+    const where: any = {
+      OR: [
+        { username: usernameOrEmail },
+        { email: usernameOrEmail },
+      ],
+      deletedAt: null,
+    };
+
+    if (tenantId) {
+      where.tenantId = tenantId;
+    }
+
+    return prisma.tenantUser.findFirst({ where });
   }
 
   async update(id: string, updateUserDto: UpdateUserDto, tenantId: string) {
-    // Verify user exists and is not soft-deleted
     const prisma = this.prisma.getClient(tenantId);
     const user = await prisma.tenantUser.findFirst({
       where: { id },
@@ -101,7 +113,6 @@ export class UsersService {
       throw new NotFoundException(`User ${id} not found`);
     }
 
-    // Explicit field mapping — never pass raw DTO to prevent accidental exposure of sensitive fields
     const updateData: { role?: UpdateUserDto['role'] } = {};
     if (updateUserDto.role !== undefined) updateData.role = updateUserDto.role;
 
@@ -111,13 +122,12 @@ export class UsersService {
     });
 
     this.logger.log(`User ${id} updated`);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     const { passwordHash: _, ...result } = updatedUser;
     return result;
   }
 
   async remove(id: string, tenantId: string) {
-    // Verify user exists and is not already soft-deleted
     const prisma = this.prisma.getClient(tenantId);
     const user = await prisma.tenantUser.findFirst({
       where: { id },
@@ -126,7 +136,6 @@ export class UsersService {
       throw new NotFoundException(`User ${id} not found`);
     }
 
-    // Soft delete
     return prisma.tenantUser.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -140,7 +149,6 @@ export class UsersService {
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
-    // Fetch full user record (including passwordHash) for verification
     const user = await this.prisma.tenantUser.findFirst({
       where: { id: userId, deletedAt: null },
     });

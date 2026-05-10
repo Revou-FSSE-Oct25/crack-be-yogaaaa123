@@ -8,6 +8,7 @@ import { TenantRole } from '@prisma/client';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
+import { AiProductInputDto } from './dto/ai-product-input.dto';
 
 @ApiTags('inventory')
 @ApiBearerAuth()
@@ -88,5 +89,16 @@ Berguna untuk restock alert di dashboard.
   })
   checkReorderLevel(@Param('productId') productId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.inventoryService.checkReorderLevel(productId, user.tenantId);
+  }
+
+  @Post('ai-input')
+  @ApiOperation({
+    summary: 'Bulk product input from AI (STAFF+ allowed)',
+    description: 'Create multiple products at once. Auto-creates categories and suppliers by name.',
+  })
+  @ApiBody({ type: AiProductInputDto })
+  @ApiResponse({ status: 201, description: 'Products created' })
+  aiProductInput(@Body() dto: AiProductInputDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.inventoryService.aiProductInput(dto.products, user.tenantId);
   }
 }

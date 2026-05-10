@@ -17,7 +17,6 @@ export class ReturnsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createReturn(data: CreateReturnDto, userId: string, tenantId: string) {
-    // 1. Fetch Sales Order and its items
     const prisma = this.prisma.getClient(tenantId);
     const salesOrder = await prisma.salesOrder.findFirst({
       where: { id: data.salesOrderId },
@@ -32,8 +31,9 @@ export class ReturnsService {
       throw new BadRequestException('Cannot return items from a pending or cancelled order');
     }
 
-    // 2. Validate return items
-    const orderItemsMap = new Map<string, OrderItem>(salesOrder.items.map((i: OrderItem) => [i.id, i]));
+    const orderItemsMap = new Map<string, OrderItem>(
+      salesOrder.items.map((i: OrderItem) => [i.id, i]),
+    );
     let totalRefund = new Prisma.Decimal(0);
     const returnItemsToCreate: ReturnItemToCreate[] = [];
 
@@ -45,7 +45,6 @@ export class ReturnsService {
         );
       }
 
-      // Check if quantity to return is valid
       const remainingReturnable = orderItem.quantity - orderItem.returnedQuantity;
       if (returnItem.quantity > remainingReturnable) {
         throw new BadRequestException(
@@ -53,8 +52,7 @@ export class ReturnsService {
         );
       }
 
-      // Use Decimal arithmetic for refund amount — no floating-point error
-      const unitPrice = orderItem.unitPrice; // Already Prisma.Decimal from DB
+      const unitPrice = orderItem.unitPrice;
       const itemRefundAmount = unitPrice.mul(returnItem.quantity);
       totalRefund = totalRefund.add(itemRefundAmount);
 
@@ -66,9 +64,7 @@ export class ReturnsService {
       });
     }
 
-    // 3. Execute Transaction
     return this.prisma.$transaction(async (tx) => {
-      // Create Sales Return
       const salesReturn = await tx.salesReturn.create({
         data: {
           returnNumber: data.returnNumber,
@@ -88,21 +84,17 @@ export class ReturnsService {
         },
       });
 
-      // Process each returned item: update stock, create transaction, update returnedQuantity
       for (const returnItem of returnItemsToCreate) {
-        // Increment returnedQuantity on OrderItem
         await tx.orderItem.update({
           where: { id: returnItem.orderItemId },
           data: { returnedQuantity: { increment: returnItem.quantity } },
         });
 
-        // Add stock back to product
         await tx.product.update({
           where: { id: returnItem.productId, tenantId },
           data: { stockQuantity: { increment: returnItem.quantity } },
         });
 
-        // Create RETURN stock transaction
         await tx.stockTransaction.create({
           data: {
             type: TransactionType.RETURN,
@@ -116,17 +108,14 @@ export class ReturnsService {
         });
       }
 
-      // Update Sales Order financials to reflect the return using Decimal arithmetic
       let returnedProfitMargin = new Prisma.Decimal(0);
       let returnedCogs = new Prisma.Decimal(0);
       for (const returnItem of returnItemsToCreate) {
         const orderItem = orderItemsMap.get(returnItem.orderItemId)!;
-        const unitPrice = orderItem.unitPrice; // Prisma.Decimal (per unit)
+        const unitPrice = orderItem.unitPrice;
 
-        // FIX: orderItem.cogs is the TOTAL cogs for the entire original quantity,
-        // so we must divide by original quantity to get per-unit cost.
-        const unitCogs = orderItem.cogs.div(orderItem.quantity); // per-unit cost
-        const unitProfitMargin = unitPrice.sub(unitCogs); // per-unit profit
+        const unitCogs = orderItem.cogs.div(orderItem.quantity);
+        const unitProfitMargin = unitPrice.sub(unitCogs);
 
         returnedProfitMargin = returnedProfitMargin.add(unitProfitMargin.mul(returnItem.quantity));
         returnedCogs = returnedCogs.add(unitCogs.mul(returnItem.quantity));
