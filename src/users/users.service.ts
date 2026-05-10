@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -42,6 +43,7 @@ export class UsersService {
       },
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash: _, ...result } = user;
     return result;
   }
@@ -74,7 +76,7 @@ export class UsersService {
 
   async findByUsername(username: string, tenantId?: string) {
     const prisma = tenantId ? this.prisma.getClient(tenantId) : this.prisma;
-    const where: any = {
+    const where: Prisma.TenantUserWhereInput = {
       username,
       deletedAt: null,
     };
@@ -89,11 +91,8 @@ export class UsersService {
   async findByUsernameOrEmail(usernameOrEmail: string, tenantId?: string) {
     const prisma = tenantId ? this.prisma.getClient(tenantId) : this.prisma;
 
-    const where: any = {
-      OR: [
-        { username: usernameOrEmail },
-        { email: usernameOrEmail },
-      ],
+    const where: Prisma.TenantUserWhereInput = {
+      OR: [{ username: usernameOrEmail }, { email: usernameOrEmail }],
       deletedAt: null,
     };
 
@@ -123,6 +122,7 @@ export class UsersService {
 
     this.logger.log(`User ${id} updated`);
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash: _, ...result } = updatedUser;
     return result;
   }

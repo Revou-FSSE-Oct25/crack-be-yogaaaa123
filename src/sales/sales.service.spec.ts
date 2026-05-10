@@ -148,11 +148,14 @@ describe('SalesService', () => {
         status: 'COMPLETED',
       };
 
+      const prismaError = new Error('Record to update not found.');
+      (prismaError as any).code = 'P2025';
+
       prisma.$transaction.mockImplementation(async (callback: Function) => {
         const tx = {
           product: {
             findMany: jest.fn().mockResolvedValue(mockProducts),
-            update: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockRejectedValue(prismaError),
           },
           salesOrder: {
             create: jest.fn().mockResolvedValue(mockSalesOrder),

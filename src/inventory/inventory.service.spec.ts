@@ -131,13 +131,16 @@ describe('InventoryService', () => {
       };
       prisma.getClient.mockReturnValue(mockClient);
 
+      const prismaError = new Error('Record to update not found.');
+      (prismaError as any).code = 'P2025';
+
       prisma.$transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         const tx = {
           stockTransaction: {
             create: jest.fn().mockResolvedValue({}),
           },
           product: {
-            update: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockRejectedValue(prismaError),
           },
         };
         return await callback(tx);

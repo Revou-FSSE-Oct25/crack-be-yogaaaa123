@@ -7,6 +7,12 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma.service';
 
+jest.mock('google-auth-library', () => ({
+  OAuth2Client: jest.fn().mockImplementation(() => ({
+    verifyIdToken: jest.fn(),
+  })),
+}));
+
 const createMockUser = (overrides: Record<string, unknown> = {}) => ({
   id: 'user-uuid-1',
   username: 'admin1',
@@ -39,7 +45,19 @@ const mockPrismaService = () => ({
   tenantUser: {
     update: jest.fn(),
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
   },
+  platformUser: {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+  },
+  tenant: {
+    findUnique: jest.fn(),
+  },
+  tenantMember: {
+    create: jest.fn(),
+  },
+  $transaction: jest.fn(),
 });
 
 describe('AuthService', () => {
@@ -319,6 +337,170 @@ describe('AuthService', () => {
           data: expect.objectContaining({ revokedAt: expect.any(Date) }),
         }),
       );
+    });
+  });
+
+  describe('googleLogin', () => {
+    const dto = { idToken: 'valid-google-token' };
+
+    beforeEach(() => {
+      const googleClient = (service as any).googleClient;
+      googleClient.verifyIdToken.mockReset();
+    });
+
+    it('should create a new platform user and return accessToken', async () => {
+      const googleClient = (service as any).googleClient;
+      googleClient.verifyIdToken.mockResolvedValue({
+        getPayload: () => ({
+          email: 'new@example.com',
+          name: 'New User',
+          sub: 'google-sub-123',
+        }),
+      });
+      prisma.platformUser.findUnique.mockResolvedValue(null);
+      prisma.platformUser.create.mockResolvedValue({
+        id: 'platform-uuid-1',
+        email: 'new@example.com',
+        name: 'New User',
+        createdAt: new Date(),
+      });
+      jwtService.sign.mockReturnValue('mock.jwt.token');
+
+      const result = await service.googleLogin(dto);
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(result.user.email).toBe('new@example.com');
+      expect(prisma.platformUser.create).toHaveBeenCalled();
+    });
+
+    it('should return existing platform user without creating new one', async () => {
+      const googleClient = (service as any).googleClient;
+      googleClient.verifyIdToken.mockResolvedValue({
+        getPayload: () => ({
+          email: 'existing@example.com',
+          name: 'Existing User',
+          sub: 'google-sub-456',
+        }),
+      });
+      prisma.platformUser.findUnique.mockResolvedValue({
+        id: 'platform-uuid-2',
+        email: 'existing@example.com',
+        name: 'Existing User',
+      });
+
+      const result = await service.googleLogin(dto);
+      expect(result.user.email).toBe('existing@example.com');
+      expect(prisma.platformUser.create).not.toHaveBeenCalled();
+    });
+
+    it('should throw UnauthorizedException when Google token is invalid', async () => {
+      const googleClient = (service as any).googleClient;
+      googleClient.verifyIdToken.mockRejectedValue(new Error('Invalid token'));
+
+      await expect(service.googleLogin(dto)).rejects.toThrow(Error);
+    });
+  });
+
+  describe('register', () => {
+    const registerDto = {
+      storeName: 'New Store',
+      username: 'newuser',
+      email: 'new@example.com',
+      password: 'Password123!',
+      displayName: 'New User',
+    };
+
+    it('should register a new store and user successfully', async () => {
+      prisma.platformUser.findUnique.mockResolvedValue(null);
+      prisma.tenant.findUnique.mockResolvedValue(null);
+      prisma.tenantUser.findFirst.mockResolvedValue(null);
+
+      const mockTx = {
+        platformUser: { create: jest.fn().mockResolvedValue({ id: 'pu-1', email: 'new@example.com' }) },
+        tenant: { create: jest.fn().mockResolvedValue({ id: 't-1', name: 'New Store' }) },
+        tenantMember: { create: jest.fn().mockResolvedValue({}) },
+        tenantUser: { create: jest.fn().mockResolvedValue({ id: 'tu-1', username: 'newuser', role: 'ADMIN', tenantId: 't-1' }) },
+      };
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
+      jwtService.sign.mockReturnValue('mock.jwt.token');
+      prisma.refreshToken.create.mockResolvedValue({});
+
+      const result = await service.register(registerDto);
+      expect(result.message).toBe('Registrasi berhasil');
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(result.user.username).toBe('newuser');
+    });
+
+    it('should throw ConflictException when email is already registered', async () => {
+      prisma.platformUser.findUnique.mockResolvedValue({ id: 'existing', email: 'new@example.com' });
+
+      await expect(service.register(registerDto)).rejects.toThrow('Email sudah terdaftar');
+    });
+
+    it('should throw ConflictException when store name already exists', async () => {
+      prisma.platformUser.findUnique.mockResolvedValue(null);
+      prisma.tenant.findUnique.mockResolvedValue({ id: 't-1', slug: 'new-store' });
+
+      await expect(service.register(registerDto)).rejects.toThrow('Nama toko sudah terdaftar');
+    });
+
+    it('should throw ConflictException when username already exists', async () => {
+      prisma.platformUser.findUnique.mockResolvedValue(null);
+      prisma.tenant.findUnique.mockResolvedValue(null);
+      prisma.tenantUser.findFirst.mockResolvedValue({ id: 'existing-user' });
+
+      await expect(service.register(registerDto)).rejects.toThrow('Username sudah terdaftar');
+    });
+  });
+
+  describe('createStore', () => {
+    const dto = {
+      storeName: 'My Store',
+      username: 'storeadmin',
+      password: 'StrongPass1!',
+      displayName: 'Store Admin',
+    };
+
+    it('should create store, tenant user, and return tokens', async () => {
+      const mockTx = {
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 't-1', name: 'My Store' }),
+        },
+        tenantUser: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'tu-1', username: 'storeadmin', role: 'ADMIN', tenantId: 't-1' }),
+        },
+        tenantMember: { create: jest.fn().mockResolvedValue({}) },
+      };
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
+      jwtService.sign.mockReturnValue('mock.jwt.token');
+      prisma.refreshToken.create.mockResolvedValue({});
+
+      const result = await service.createStore(dto, 'platform-user-id');
+      expect(result.message).toBe('Store created successfully');
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(result.user.storeName).toBe('My Store');
+    });
+
+    it('should throw ConflictException when store slug already exists', async () => {
+      const mockTx = {
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'existing', slug: 'my-store' }),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
+
+      await expect(service.createStore(dto, 'platform-user-id')).rejects.toThrow('Store name already registered');
+    });
+
+    it('should throw ConflictException when username already exists', async () => {
+      const mockTx = {
+        tenant: { findUnique: jest.fn().mockResolvedValue(null) },
+        tenantUser: { findFirst: jest.fn().mockResolvedValue({ id: 'existing-user' }) },
+      };
+      prisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
+
+      await expect(service.createStore(dto, 'platform-user-id')).rejects.toThrow('Username already registered');
     });
   });
 });

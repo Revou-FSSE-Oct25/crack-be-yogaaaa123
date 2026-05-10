@@ -4,6 +4,17 @@ import { PrismaService } from '../prisma.service';
 import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
+const createMockClient = () => ({
+  tenantUser: {
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    findUniqueOrThrow: jest.fn(),
+    findMany: jest.fn(),
+    update: jest.fn(),
+    create: jest.fn(),
+  },
+});
+
 const mockPrismaService = () => ({
   tenantUser: {
     findFirst: jest.fn(),
@@ -41,7 +52,9 @@ describe('UsersService', () => {
     };
 
     it('should create a user and return without passwordHash', async () => {
-      prisma.tenantUser.findFirst.mockResolvedValue(null);
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue(null);
+      prisma.getClient.mockReturnValue(mockClient);
       prisma.tenantUser.create.mockResolvedValue({
         id: 'user-1',
         username: dto.username,
@@ -58,13 +71,17 @@ describe('UsersService', () => {
     });
 
     it('should throw ConflictException if username already exists', async () => {
-      prisma.tenantUser.findFirst.mockResolvedValue({ id: 'existing-user' });
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue({ id: 'existing-user' });
+      prisma.getClient.mockReturnValue(mockClient);
 
       await expect(service.create(dto, 'tenant-uuid-1')).rejects.toThrow(ConflictException);
     });
 
     it('should assign default role STAFF when role is not provided', async () => {
-      prisma.tenantUser.findFirst.mockResolvedValue(null);
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue(null);
+      prisma.getClient.mockReturnValue(mockClient);
       prisma.tenantUser.create.mockResolvedValue({
         id: 'user-1',
         username: dto.username,
@@ -158,10 +175,12 @@ describe('UsersService', () => {
     });
 
     it('should filter by tenantId when provided', async () => {
-      prisma.tenantUser.findFirst.mockResolvedValue(null);
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue(null);
+      prisma.getClient.mockReturnValue(mockClient);
 
       await service.findByUsername('testuser', 'tenant-1');
-      expect(prisma.tenantUser.findFirst).toHaveBeenCalledWith({
+      expect(mockClient.tenantUser.findFirst).toHaveBeenCalledWith({
         where: { username: 'testuser', deletedAt: null, tenantId: 'tenant-1' },
       });
     });
@@ -193,16 +212,15 @@ describe('UsersService', () => {
 
   describe('update', () => {
     it('should use getClient to verify user, then update via prisma directly', async () => {
-      const mockClient = {
-        tenantUser: { findFirst: jest.fn().mockResolvedValue({ id: 'user-1', deletedAt: null }) },
-      };
-      prisma.getClient.mockReturnValue(mockClient);
-      prisma.tenantUser.update.mockResolvedValue({
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue({ id: 'user-1', deletedAt: null });
+      mockClient.tenantUser.update.mockResolvedValue({
         id: 'user-1',
         username: 'testuser',
         role: 'ADMIN',
         passwordHash: 'secret',
       });
+      prisma.getClient.mockReturnValue(mockClient);
 
       const result = await service.update('user-1', { role: 'ADMIN' }, 'tenant-uuid-1');
       expect(result.role).toBe('ADMIN');
@@ -210,9 +228,8 @@ describe('UsersService', () => {
     });
 
     it('should throw NotFoundException when user does not exist', async () => {
-      const mockClient = {
-        tenantUser: { findFirst: jest.fn().mockResolvedValue(null) },
-      };
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue(null);
       prisma.getClient.mockReturnValue(mockClient);
 
       await expect(
@@ -223,25 +240,23 @@ describe('UsersService', () => {
 
   describe('remove', () => {
     it('should soft delete a user (set deletedAt)', async () => {
-      const mockClient = {
-        tenantUser: { findFirst: jest.fn().mockResolvedValue({ id: 'user-1', deletedAt: null }) },
-      };
-      prisma.getClient.mockReturnValue(mockClient);
-      prisma.tenantUser.update.mockResolvedValue({
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue({ id: 'user-1', deletedAt: null });
+      mockClient.tenantUser.update.mockResolvedValue({
         id: 'user-1',
         username: 'testuser',
         role: 'STAFF',
         deletedAt: new Date(),
       });
+      prisma.getClient.mockReturnValue(mockClient);
 
       const result = await service.remove('user-1', 'tenant-uuid-1');
       expect(result.deletedAt).toBeInstanceOf(Date);
     });
 
     it('should throw NotFoundException when user is not found', async () => {
-      const mockClient = {
-        tenantUser: { findFirst: jest.fn().mockResolvedValue(null) },
-      };
+      const mockClient = createMockClient();
+      mockClient.tenantUser.findFirst.mockResolvedValue(null);
       prisma.getClient.mockReturnValue(mockClient);
 
       await expect(service.remove('nonexistent', 'tenant-uuid-1')).rejects.toThrow(
