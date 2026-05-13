@@ -1,21 +1,26 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: crack-db
-    restart: no
+    restart: unless-stopped
+    ports:
+      - '5433:5432'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: inventory_db
-    ports:
-      - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: .
     container_name: crack-be
-    restart: no
+    restart: on-failure
     ports:
       - '8080:8080'
     environment:
@@ -23,13 +28,19 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       AI_INTERNAL_API_KEY: ${AI_INTERNAL_API_KEY}
       AI_SERVICE_URL: 'http://ai:8001'
+      ALLOWED_ORIGINS: 'http://localhost:3000,http://localhost:3001'
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   ai:
     build: ./crack-ai
     container_name: crack-ai
-    restart: no
+    restart: on-failure
     ports:
       - '8001:8001'
     environment:
@@ -40,8 +51,12 @@ services:
       BACKEND_URL: 'http://backend:8080'
       BACKEND_INTERNAL_API_KEY: ${AI_INTERNAL_API_KEY}
     depends_on:
-      - db
-      - backend
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
 volumes:
   pgdata:

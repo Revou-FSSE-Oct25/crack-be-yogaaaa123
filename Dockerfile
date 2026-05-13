@@ -28,4 +28,4 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 8080
 
-CMD ["npm", "run", "start:migrate"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main"]

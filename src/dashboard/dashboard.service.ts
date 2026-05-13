@@ -121,8 +121,9 @@ export class DashboardService {
 
     return result.map((row) => ({
       date: row.date,
-      revenue: row.revenue,
-      profit: row.profit,
+      totalRevenue: Number(row.revenue),
+      totalProfit: Number(row.profit),
+      totalSales: Number(row.order_count),
       order_count: Number(row.order_count),
     }));
   }

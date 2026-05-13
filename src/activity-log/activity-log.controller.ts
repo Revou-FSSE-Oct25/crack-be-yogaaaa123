@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards, Query, Header } from '@nestjs/common';
 import { ActivityLogService } from './activity-log.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -17,6 +17,7 @@ export class ActivityLogController {
   constructor(private readonly activityLogService: ActivityLogService) {}
 
   @Get()
+  @Header('Cache-Control', 'private, max-age=30')
   @ApiOperation({
     summary: 'Semua activity logs (Admin only — dengan pagination)',
     description: `

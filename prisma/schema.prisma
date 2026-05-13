@@ -6,9 +6,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// PLATFORM ADMIN — Super Admin (developer/pemilik platform)
-// ═══════════════════════════════════════════════════════════════════════
 
 model PlatformAdmin {
   id           String   @id @default(uuid())
@@ -21,9 +18,6 @@ model PlatformAdmin {
   @@map("platform_admins")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// TENANT (Toko) — Multi-tenant core
-// ═══════════════════════════════════════════════════════════════════════
 
 model Tenant {
   id           String   @id @default(uuid())
@@ -49,9 +43,6 @@ model Tenant {
   @@map("tenants")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// TENANT USER — User khusus untuk satu toko (terisolasi per tenant)
-// ═══════════════════════════════════════════════════════════════════════
 
 enum TenantRole {
   ADMIN
@@ -102,9 +93,6 @@ model PlatformUser {
   @@map("platform_users")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// TENANT MEMBER — Relasi PlatformUser ke Tenant (siapa punya toko apa)
-// ═══════════════════════════════════════════════════════════════════════
 
 model TenantMember {
   id         String   @id @default(uuid())
@@ -121,9 +109,6 @@ model TenantMember {
   @@map("tenant_members")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// PRODUCT — Sekarang terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 model Product {
   id            String    @id @default(uuid())
@@ -274,9 +259,6 @@ model PurchaseOrderItem {
   @@map("purchase_order_items")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SALES ORDER — Terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 enum SalesOrderStatus {
   PENDING
@@ -329,9 +311,6 @@ model OrderItem {
   @@map("order_items")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SALES RETURN — Terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 enum ReturnStatus {
   PENDING
@@ -378,9 +357,6 @@ model SalesReturnItem {
   @@map("sales_return_items")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// ACTIVITY LOG — Terikat ke tenant
-// ═══════════════════════════════════════════════════════════════════════
 
 enum ActivityAction {
   CREATE
@@ -410,9 +386,6 @@ model ActivityLog {
   @@map("activity_logs")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// REFRESH TOKEN — Terikat ke tenant user
-// ═══════════════════════════════════════════════════════════════════════
 
 model RefreshToken {
   id        String   @id @default(uuid())
