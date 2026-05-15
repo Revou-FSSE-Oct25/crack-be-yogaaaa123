@@ -4,6 +4,7 @@ Enterprise-grade inventory management backend built with **NestJS v11**, **Prism
 Multi-tenant SaaS architecture with role-based access control, real-time stock tracking, and AI-powered insights.
 
 ---
+b
 
 ## 📋 Table of Contents
 
@@ -27,7 +28,7 @@ Multi-tenant SaaS architecture with role-based access control, real-time stock t
 | ---------------- | ----------------------------------------------------------------- |
 | **Framework**    | NestJS v11 (Express under the hood)                               |
 | **Language**     | TypeScript 5+ with `strict` mode                                  |
-| **Database**     | PostgreSQL 15+                                                     |
+| **Database**     | PostgreSQL 16                                                      |
 | **ORM**          | Prisma v7 (type-safe database client)                             |
 | **Auth**         | JWT (Passport) + HttpOnly Cookie + bcrypt (cost factor 12)        |
 | **CSRF**         | Double-submit cookie pattern                                      |
@@ -37,7 +38,8 @@ Multi-tenant SaaS architecture with role-based access control, real-time stock t
 | **Logging**      | Winston (structured JSON in production, colorful in dev)          |
 | **File Upload**  | Multer (max 5MB, jpeg/png/gif/webp only)                          |
 | **Caching**      | In-memory with 30s TTL for GET endpoints                          |
-| **AI**           | Python microservice integration (separate service)                |
+| **AI**           | Python FastAPI microservice (separate Docker container)           |
+| **Auth Provider**| Google OAuth via Firebase ID Token (optional)                     |
 
 ---
 
@@ -100,7 +102,7 @@ Multi-tenant SaaS architecture with role-based access control, real-time stock t
               └─────────────────────┘
 ```
 
-### Key Architecture Decisions
+### Key Architecture Decisions (Updated)
 
 **Multi-tenant via Row-Level Isolation**  
 Every table has a `tenantId` column. The `PrismaService.getClient(tenantId)` returns an extended Prisma client that automatically adds `WHERE tenantId = ?` to every query. No separate databases per tenant — cheaper and simpler to manage.
@@ -141,73 +143,187 @@ npm run start:dev
 
 The API will be available at `http://localhost:3000` and Swagger docs at `http://localhost:3000/api`.
 
+### Seed Data
+
+Seeder berlokasi di `prisma/seed/` dengan struktur modular:
+
+```
+prisma/seed/
+├── index.ts               # Entry point — runs all seeders in order
+├── tenant-and-users.ts    # Creates tenant + admin + staff users
+├── categories.ts          # Seed categories (e.g., Makanan, Minuman)
+├── suppliers.ts           # Seed suppliers
+├── products.ts            # Seed products with prices & stock
+├── sales-orders.ts        # Seed historical sales data
+├── purchase-orders.ts     # Seed purchase orders
+├── summary.ts             # Logs seed summary
+└── cleanup.ts             # Cleanup script
+```
+
 ### Default Seed Users
 
 | Username  | Password       | Role  |
 | --------- | -------------- | ----- |
 | `admin1`  | `password123`  | ADMIN |
-| `staff1`  | `password123`  | STAFF |
+| `staff1`  | `password123`  | STAFF/CASHIER |
 
 ---
 
 ## 📁 Project Structure
 
 ```
+```
 src/
 ├── app.module.ts                 # Root module — registers global guards & interceptors
 ├── main.ts                       # Bootstrap — CORS, Helmet, CookieParser, Swagger, Validation
 ├── prisma.service.ts             # Prisma client with tenant isolation extension
 ├── prisma.module.ts              # Shared Prisma module
+├── prisma.extension.ts           # Soft delete + tenant filter extensions
 ├── logger.config.ts              # Winston logger configuration
 │
 ├── auth/                         # 🔐 Authentication module
 │   ├── auth.module.ts
 │   ├── auth.controller.ts        # POST /auth/login, /auth/register, /auth/refresh, /auth/logout
-│   ├── auth.service.ts           # Login logic, brute force protection, token rotation
-│   ├── dto/login.dto.ts
-│   ├── dto/register.dto.ts
+│   ├── auth.service.ts           # Login logic, brute force protection, token rotation, Google OAuth
+│   ├── auth.service.spec.ts      # Unit tests
+│   ├── dto/
+│   │   ├── login.dto.ts
+│   │   ├── register.dto.ts
+│   │   ├── google-login.dto.ts   # Google OAuth payload
+│   │   └── create-store.dto.ts   # Post-Google store creation
 │   └── strategies/
 │       └── jwt.strategy.ts       # Dual-mode: cookie first, Bearer header fallback
 │
 ├── users/                        # 👥 User management (Admin only)
-│   ├── users.module.ts
 │   ├── users.controller.ts
-│   └── users.service.ts
+│   ├── users.service.ts
+│   ├── users.service.spec.ts
+│   ├── users.module.ts
+│   └── dto/
+│       ├── create-user.dto.ts
+│       └── update-user.dto.ts
 │
 ├── categories/                   # 🏷️ Product categories
-├── suppliers/                    # 🤝 Supplier management
-├── products/                     # 📦 Product catalog (search, pagination, filter)
-├── inventory/                    # 📊 Stock transactions & adjustments
-├── sales/                        # 🛒 Sales orders with COGS tracking
-├── purchase/                     # 🚚 Purchase orders from suppliers
-├── returns/                      # ↩️ Sales returns with stock reversal
-├── activity-log/                 # 📋 Audit trail
-├── dashboard/                    # 📈 Dashboard analytics (summary, top products, trends)
-├── reports/                      # 📑 Reports (Admin only)
-├── upload/                       # 📤 File upload (product images via Multer)
-├── health/                       # ❤️ Health check endpoint
-├── ai/                           # 🤖 AI chat integration module
-├── ai-data/                      # 🔌 AI data API (read-only endpoints for Python AI service)
-├── admin/                        # 🛡️ Platform admin module
+│   ├── categories.controller.ts
+│   ├── categories.service.ts
+│   ├── categories.service.spec.ts
+│   └── categories.module.ts
 │
-└── common/                       # 🔧 Shared utilities
-    ├── decorators/
-    │   ├── current-user.decorator.ts   # @CurrentUser() parameter decorator
-    │   ├── public.decorator.ts         # @Public() — skip JWT auth
-    │   └── roles.decorator.ts          # @Roles() — role-based access
-    ├── guards/
-    │   ├── jwt-auth.guard.ts           # Global JWT guard (reads cookie first)
-    │   ├── csrf.guard.ts               # Double-submit cookie CSRF validation
-    │   ├── roles.guard.ts              # Role-based authorization
-    │   └── tenant-throttler.guard.ts   # Tenant-aware rate limiting
-    ├── filters/
-    │   ├── http-exception.filter.ts
-    │   ├── prisma-client-exception.filter.ts
-    │   └── all-exceptions.filter.ts
-    └── interceptors/
-        ├── response.interceptor.ts     # Standardized JSON envelope
-        ├── cache.interceptor.ts        # 30s in-memory cache for GET
-        └── audit-log.interceptor.ts    # Auto-log all mutations
+├── suppliers/                    # 🤝 Supplier management
+│   ├── suppliers.controller.ts
+│   ├── suppliers.service.ts
+│   ├── suppliers.service.spec.ts
+│   └── suppliers.module.ts
+│
+├── products/                     # 📦 Product catalog (search, pagination, filter)
+│   ├── products.controller.ts
+│   ├── products.service.ts
+│   ├── products.service.spec.ts
+│   ├── products.module.ts
+│   └── dto/create-product.dto.ts
+│
+├── inventory/                    # 📊 Stock transactions & adjustments
+│   ├── inventory.controller.ts
+│   ├── inventory.service.ts
+│   ├── inventory.service.spec.ts
+│   ├── inventory.module.ts
+│   └── dto/
+│       ├── adjust-stock.dto.ts
+│       └── ai-product-input.dto.ts
+│
+├── sales/                        # 🛒 Sales orders with COGS tracking
+│   ├── sales.controller.ts
+│   ├── sales.service.ts
+│   ├── sales.service.spec.ts
+│   ├── sales.module.ts
+│   └── dto/create-sales-order.dto.ts
+│
+├── purchase/                     # 🚚 Purchase orders from suppliers
+│   ├── purchase.controller.ts
+│   ├── purchase.service.ts
+│   ├── purchase.service.spec.ts
+│   ├── purchase.module.ts
+│   └── dto/create-purchase-order.dto.ts
+│
+├── returns/                      # ↩️ Sales returns with stock reversal
+│   ├── returns.controller.ts
+│   ├── returns.service.ts
+│   ├── returns.service.spec.ts
+│   ├── returns.module.ts
+│   └── dto/
+│
+├── activity-log/                 # 📋 Audit trail
+│   ├── activity-log.controller.ts
+│   ├── activity-log.service.ts
+│   └── activity-log.module.ts
+│
+├── dashboard/                    # 📈 Dashboard analytics
+│   ├── dashboard.controller.ts
+│   ├── dashboard.service.ts
+│   ├── dashboard.service.spec.ts
+│   └── dashboard.module.ts
+│
+├── reports/                      # 📑 Reports (Admin only)
+│   ├── reports.controller.ts
+│   ├── reports.service.ts
+│   ├── reports.service.spec.ts
+│   └── reports.module.ts
+│
+├── upload/                       # 📤 File upload (product images via Multer)
+│   ├── upload.controller.ts
+│   └── upload.module.ts
+│
+├── health/                       # ❤️ Health check endpoint
+│   ├── health.controller.ts
+│   └── prisma.health.ts
+│
+├── ai/                           # 🤖 AI chat integration module
+│   ├── ai.controller.ts
+│   ├── ai.service.ts
+│   ├── ai.module.ts
+│   └── dto/ai-chat-request.dto.ts
+│
+├── ai-data/                      # 🔌 AI data API (read-only for Python AI service)
+│   ├── ai-data.controller.ts
+│   └── ai-data.module.ts
+│
+├── admin/                        # 🛡️ Platform admin module
+│   ├── admin.controller.ts
+│   ├── admin.service.ts
+│   └── admin.module.ts
+│
+├── common/                       # 🔧 Shared utilities
+│   ├── constants/
+│   │   └── roles.constant.ts     # Role definitions (SUPER_ADMIN, ADMIN, STAFF)
+│   ├── decorators/
+│   │   ├── current-user.decorator.ts   # @CurrentUser() parameter decorator
+│   │   ├── public.decorator.ts         # @Public() — skip JWT auth
+│   │   └── roles.decorator.ts          # @Roles() — role-based access
+│   ├── guards/
+│   │   ├── jwt-auth.guard.ts           # Global JWT guard (reads cookie first)
+│   │   ├── jwt-auth.guard.spec.ts      # Unit test
+│   │   ├── platform-jwt.guard.ts       # Guard for Google-login platform tokens
+│   │   ├── csrf.guard.ts               # Double-submit cookie CSRF validation
+│   │   ├── roles.guard.ts              # Role-based authorization
+│   │   └── tenant-throttler.guard.ts   # Tenant-aware rate limiting
+│   ├── middleware/
+│   │   └── sanitize.middleware.ts      # Input sanitization middleware
+│   ├── filters/
+│   │   ├── http-exception.filter.ts
+│   │   ├── prisma-client-exception.filter.ts
+│   │   └── all-exceptions.filter.ts
+│   └── interceptors/
+│       ├── response.interceptor.ts     # Standardized JSON envelope
+│       ├── cache.interceptor.ts        # 30s in-memory cache for GET
+│       └── audit-log.interceptor.ts    # Auto-log all mutations
+│
+└── test/                         # 🧪 Test utilities & fixtures
+    ├── fixtures/
+    │   └── users.fixture.ts      # User test fixtures
+    └── utils/
+        ├── mock-prisma.ts        # Prisma mock factory
+        └── test-helpers.ts       # Test utility functions
+```
 ```
 
 ---
@@ -282,6 +398,9 @@ src/
 | POST | `/auth/login` | 10/min | Login — sets HttpOnly cookies, returns `{ user }` |
 | POST | `/auth/register` | 5/min | Register new store — auto-creates tenant + admin user |
 | POST | `/auth/refresh` | 5/min | Refresh access token (reads `refresh_token` cookie) |
+| POST | `/auth/google-login` | 5/min | Login via Google OAuth (Firebase ID token) |
+| POST | `/auth/create-store` | 5/min | Create store for PlatformUser (Post-Google flow) |
+| POST | `/auth/logout` | — | Logout (clears cookies + revokes refresh token) |
 | GET | `/auth/csrf-token` | — | Get CSRF token (sets non-httpOnly `csrf_token` cookie) |
 | GET | `/health` | — | Health check (DB connection, uptime) |
 
@@ -376,7 +495,34 @@ src/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/upload/image` | Upload product image (max 5MB, jpeg/png/gif/webp) |
+| POST | `/upload/image` | Upload product image (max 5MB, jpeg/png/gif/webp only) |
+
+### 🔌 AI Data (for Python AI Service — internal)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/ai-data/products` | Get all products for AI context |
+| GET | `/ai-data/sales` | Get sales data for AI analysis |
+| GET | `/ai-data/inventory` | Get inventory data for AI querying |
+| GET | `/ai-data/dashboard` | Get dashboard summary for AI |
+| GET | `/ai-data/categories` | Get categories for AI |
+| GET | `/ai-data/suppliers` | Get suppliers for AI |
+| GET | `/ai-data/users` | Get tenant users for AI |
+
+### 🛡️ Super Admin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/login` | Super admin login |
+| GET | `/admin/tenants` | List all tenants + stats |
+| GET | `/admin/tenants/:id` | Get tenant details |
+| GET | `/admin/stats` | Platform-wide statistics |
+
+### 📋 Activity Log
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/activity-log` | JWT | List activity logs (paginated, filtered) |
 
 ### 🤖 AI Chat (JWT)
 
@@ -401,7 +547,8 @@ Tenant ──┬── TenantUser ──── RefreshToken
          ├── PlatformMember ── PlatformUser
          ├── Product ──────── Category, Supplier
          ├── StockTransaction
-         ├── SalesOrder ───── OrderItem ──── SalesReturn ── SalesReturnItem
+         ├── SalesOrder ───── OrderItem
+         ├── SalesReturn ──── SalesReturnItem
          ├── PurchaseOrder ── PurchaseOrderItem
          └── ActivityLog
 ```
@@ -410,18 +557,21 @@ Tenant ──┬── TenantUser ──── RefreshToken
 
 | Entity | Description | Key Fields |
 |--------|-------------|------------|
-| **Tenant** | Toko (store) — root of multi-tenant isolation | `name`, `slug`, `aiApiKey` |
+| **Tenant** | Toko (store) — root of multi-tenant isolation | `name`, `slug`, `aiApiKey`, `aiTokens` |
 | **PlatformUser** | User global (email/password login) | `email`, `googleId` |
 | **TenantMember** | Relasi PlatformUser → Tenant | `role` (OWNER/MEMBER) |
-| **TenantUser** | User dalam toko (login ke POS) | `username`, `role` (ADMIN/STAFF) |
-| **Product** | Produk dengan SKU & harga | `sku`, `name`, `price`, `stockQuantity` |
+| **TenantUser** | User dalam toko (login ke POS) | `username`, `role` (ADMIN/STAFF/CASHIER) |
+| **Product** | Produk dengan SKU & harga | `sku`, `name`, `price`, `stockQuantity`, `image` |
 | **Category** | Kategori produk | `name` |
 | **Supplier** | Pemasok | `name`, `phone`, `email` |
-| **StockTransaction** | Riwayat stok (ledger) | `type` (IN/OUT/ADJUSTMENT/RETURN) |
-| **SalesOrder** | Pesanan penjualan | `status`, `totalPrice`, `totalProfit` |
-| **PurchaseOrder** | Pesanan pembelian | `status`, `totalPrice` |
-| **SalesReturn** | Retur penjualan | `status`, `totalRefund` |
-| **ActivityLog** | Catatan audit | `action`, `entity`, `metadata` (JSON) |
+| **StockTransaction** | Riwayat stok (ledger) | `type` (IN/OUT/ADJUSTMENT/RETURN), `quantity`, `notes` |
+| **SalesOrder** | Pesanan penjualan | `status`, `totalPrice`, `totalProfit`, `totalCost` |
+| **OrderItem** | Item dalam pesanan | `quantity`, `price`, `productId` |
+| **PurchaseOrder** | Pesanan pembelian | `status`, `totalPrice`, `notes` |
+| **PurchaseOrderItem** | Item dalam pembelian | `quantity`, `price`, `productId` |
+| **SalesReturn** | Retur penjualan | `status`, `totalRefund`, `reason` |
+| **SalesReturnItem** | Item dalam retur | `quantity`, `refundAmount`, `productId` |
+| **ActivityLog** | Catatan audit | `action`, `entity`, `metadata` (JSON), `performedBy` |
 | **RefreshToken** | Token refresh JWT | `token` (hashed), `expiresAt`, `revokedAt` |
 
 ---
@@ -439,6 +589,8 @@ Tenant ──┬── TenantUser ──── RefreshToken
 | `UPLOAD_DIR` | ❌ | `./uploads` | Upload directory for product images |
 | `AI_SERVICE_URL` | ❌ | `http://localhost:8001` | Python AI service URL |
 | `AI_INTERNAL_API_KEY` | ✅ | — | Internal API key for BE↔AI communication |
+| `GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth client ID (required for Google login) |
+| `POSTGRES_PASSWORD` | ❌ | — | PostgreSQL password (used in docker-compose) |
 
 ---
 
@@ -498,30 +650,60 @@ For paginated endpoints, `data` contains:
 | Script | Description |
 |--------|-------------|
 | `npm run start:dev` | Start in watch mode with hot reload |
-| `npm run build` | Build for production |
 | `npm run start:prod` | Start production server |
-| `npm run lint` | Lint all files (Prettier) |
+| `npm run start:migrate` | Run migrations then start production server |
+| `npm run build` | Build for production |
+| `npm run lint` | Lint all files (ESLint + Prettier) |
+| `npm run format` | Format code with Prettier |
 | `npm run test` | Run unit tests (Jest) |
+| `npm run test:cov` | Run tests with coverage report |
 | `npm run test:e2e` | Run end-to-end tests |
-| `npx prisma migrate dev` | Run database migrations |
-| `npx prisma db seed` | Seed default users |
-| `npx prisma studio` | Open Prisma Studio (DB browser) |
+| `npx prisma migrate dev` | Run database migrations (dev) |
+| `npx prisma migrate deploy` | Run database migrations (production) |
+| `npx prisma db seed` | Seed default users & data |
+| `npx prisma studio` | Open Prisma Studio (DB browser GUI) |
+| `npx prisma generate` | Regenerate Prisma client after schema changes |
 
 ---
 
 ## 🐳 Docker
 
+Project includes a `docker-compose.yml` with 3 services:
+
+| Service | Container | Port | Description |
+|---------|-----------|------|-------------|
+| **db** | `crack-db` | 5433:5432 | PostgreSQL 17 Alpine |
+| **backend** | `crack-be` | 8080:8080 | NestJS API server |
+| **ai** | `crack-ai` | 8001:8001 | Python AI microservice |
+
 ```bash
-# Build image
+# Build & start all services
+docker compose up -d
+
+# Build specific service
+docker compose build backend
+
+# Rebuild from scratch (no cache)
+docker compose build --no-cache backend
+
+# View logs
+docker compose logs -f backend
+
+# Stop all services
+docker compose down
+
+# Single Docker image build
 docker build -t crackpos-backend .
 
-# Run with PostgreSQL
+# Run standalone with PostgreSQL
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://user:pass@host:5432/db" \
   -e JWT_SECRET="your-secret" \
   -e AI_INTERNAL_API_KEY="your-key" \
   crackpos-backend
 ```
+
+> Note: The backend container uses port **8080** (not 3000) in the docker-compose setup. The default port is 3000 when running locally via `npm run start:dev`.
 
 ---
 
@@ -538,4 +720,4 @@ npm run test -- --coverage
 npm run test:e2e
 ```
 
-Current test coverage: **97 tests across 8 suites** — covering auth flow, guards, services, and controllers.
+Current test coverage: **145 tests across 15 test files** — covering auth flow, guards, services, controllers, and utilities.
