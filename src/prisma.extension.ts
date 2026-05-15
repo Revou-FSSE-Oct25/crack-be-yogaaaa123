@@ -7,7 +7,6 @@ const TENANT_SOFT_DELETE_MODELS = [
   'SalesOrder',
   'PurchaseOrder',
   'TenantUser',
-  'ActivityLog',
 ] as const;
 
 const SOFT_DELETE_ONLY_MODELS = ['PlatformAdmin', 'PlatformUser', 'Tenant'] as const;
