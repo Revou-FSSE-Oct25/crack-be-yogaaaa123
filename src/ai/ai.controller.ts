@@ -84,9 +84,10 @@ Kirim pesan ke AI asisten untuk bertanya tentang data bisnis secara real-time.
     @CurrentUser() user: AuthenticatedUser,
     @Req() req: any,
   ) {
-    const token = req.cookies?.auth_token;
+    // Read JWT from cookie (HttpOnly) or Authorization Bearer header (client-set)
+    const token = req.cookies?.auth_token || req.headers?.authorization?.replace('Bearer ', '');
     if (!token) {
-      throw new UnauthorizedException('Missing auth_token cookie');
+      throw new UnauthorizedException('Authentication token is missing');
     }
 
     const result = await this.aiService.chat(body.message, body.history || [], token, user);
