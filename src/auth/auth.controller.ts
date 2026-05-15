@@ -319,12 +319,15 @@ Akun terkunci 30 menit setelah 5 failed attempts
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: any) {
     const result = await this.authService.login(loginDto);
     const cookieOpts = this.getCookieOptions();
+    // Set HttpOnly cookies (primary auth method)
     res.cookie('auth_token', result.accessToken, { ...cookieOpts, maxAge: 15 * 60 * 1000 });
     res.cookie('refresh_token', result.refreshToken, {
       ...cookieOpts,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    return { user: result.user };
+    // Expose tokens in response body for cross-domain proxying
+    res.setHeader('X-Access-Token', result.accessToken);
+    return { user: result.user, accessToken: result.accessToken };
   }
 
   @Public()
