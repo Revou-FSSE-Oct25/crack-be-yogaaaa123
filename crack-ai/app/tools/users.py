@@ -5,8 +5,8 @@ TENANT ISOLATION: All queries filtered by tenantId to prevent cross-tenant data 
 """
 from __future__ import annotations
 from typing import Any
-from database import get_pool
-from tools import cap, validate_entity
+from app.db.database import get_pool
+from app.tools import cap, validate_entity
 
 async def get_users(user_id: str, role: str, tenant_id: str) -> dict[str, Any]:
     """List users/cashiers. ADMIN only. Tenant isolated."""

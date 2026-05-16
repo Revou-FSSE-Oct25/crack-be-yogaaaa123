@@ -8,8 +8,8 @@ All dynamic values use parameterized queries — NO SQL injection.
 """
 from __future__ import annotations
 from typing import Any
-from database import get_pool
-from tools import cap
+from app.db.database import get_pool
+from app.tools import cap
 
 async def get_sales_report(
     user_id: str, role: str, tenant_id: str,

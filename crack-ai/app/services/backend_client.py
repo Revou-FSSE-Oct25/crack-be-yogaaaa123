@@ -20,7 +20,7 @@ USAGE:
 """
 import httpx
 from typing import Any
-from config import settings
+from app.core.config import settings
 
 _client: httpx.AsyncClient | None = None
 

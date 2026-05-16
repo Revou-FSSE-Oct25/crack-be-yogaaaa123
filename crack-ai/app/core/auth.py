@@ -19,7 +19,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from typing import Optional
 
-from config import settings
+from app.core.config import settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

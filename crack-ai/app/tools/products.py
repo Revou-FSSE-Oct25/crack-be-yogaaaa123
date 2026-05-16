@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from database import get_pool
-from tools import cap
+from app.db.database import get_pool
+from app.tools import cap
 
 MAX_SEARCH_QUERY_LENGTH = 200
 

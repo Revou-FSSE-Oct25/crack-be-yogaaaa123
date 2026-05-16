@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from config import settings
+from app.core.config import settings
 
 async def execute_tool(
     tool_name: str,
@@ -33,13 +33,13 @@ async def execute_tool(
     - Never take these values from kwargs sent by AI
     - tenant_id ensures multi-tenant data isolation
     """
-    from tools.categories import get_categories
-    from tools.dashboard import get_dashboard_summary
-    from tools.inventory import get_inventory_value, get_stock_transactions
-    from tools.products import get_low_stock_products, get_top_products, search_products
-    from tools.sales import get_sales_report, get_profit_loss, get_sales_returns
-    from tools.suppliers import get_suppliers, get_purchase_orders
-    from tools.users import get_users, get_activity_logs
+    from app.tools.categories import get_categories
+    from app.tools.dashboard import get_dashboard_summary
+    from app.tools.inventory import get_inventory_value, get_stock_transactions
+    from app.tools.products import get_low_stock_products, get_top_products, search_products
+    from app.tools.sales import get_sales_report, get_profit_loss, get_sales_returns
+    from app.tools.suppliers import get_suppliers, get_purchase_orders
+    from app.tools.users import get_users, get_activity_logs
 
     tool_map = {
         "get_dashboard_summary": get_dashboard_summary,

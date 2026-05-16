@@ -9,7 +9,7 @@ import {
 import { HttpService } from '@nestjs/axios';
 import { AxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 
 interface ChatHistoryMessage {

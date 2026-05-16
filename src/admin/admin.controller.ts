@@ -19,7 +19,7 @@ import { ROLES } from '../common/constants/roles.constant';
 import { AdminService } from './admin.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   ApiTags,
   ApiBearerAuth,

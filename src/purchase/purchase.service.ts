@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { TransactionType, PurchaseOrderStatus, Prisma } from '@prisma/client';
 
 interface PurchaseOrderItem {

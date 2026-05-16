@@ -5,7 +5,7 @@ TENANT ISOLATION: All queries filtered by tenantId to prevent cross-tenant data 
 """
 from __future__ import annotations
 from typing import Any
-from database import get_pool
+from app.db.database import get_pool
 
 async def get_categories(user_id: str, role: str, tenant_id: str) -> dict[str, Any]:
     """List all product categories. Tenant isolated."""

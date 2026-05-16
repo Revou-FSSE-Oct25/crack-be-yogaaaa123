@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from database import get_pool
+from app.db.database import get_pool
 
 async def get_dashboard_summary(
     user_id: str,

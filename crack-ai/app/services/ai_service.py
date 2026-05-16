@@ -18,9 +18,9 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from config import settings
-from tools import execute_tool as _execute_tool
-from logging_config import get_logger
+from app.core.config import settings
+from app.services.tools_registry import execute_tool as _execute_tool
+from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 

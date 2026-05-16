@@ -2,7 +2,7 @@ import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/c
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { WinstonModule } from 'nest-winston';
-import { PrismaModule } from './prisma.module';
+import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -20,13 +20,13 @@ import { UploadModule } from './upload/upload.module';
 import { AiModule } from './ai/ai.module';
 import { AiDataModule } from './ai-data/ai-data.module';
 import { AdminModule } from './admin/admin.module';
-import { PrismaService } from './prisma.service';
+import { PrismaService } from './prisma/prisma.service';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { TenantThrottlerGuard } from './common/guards/tenant-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { CsrfGuard } from './common/guards/csrf.guard';
 import { SanitizeMiddleware } from './common/middleware/sanitize.middleware';
-import { createWinstonLoggerOptions } from './logger.config';
+import { createWinstonLoggerOptions } from './config/logger.config';
 
 @Module({
   imports: [

@@ -31,14 +31,14 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from auth import AuthenticatedUser, get_current_user
-from config import settings
-from database import close_db, init_db
-from backend_client import close_backend_client
-from logging_config import get_logger, setup_logging
-from schemas import ChatRequest, ChatResponse, ProductFromImageResponse, ProductImageItem
-import ai_service
-from ai_service import client
+from app.core.auth import AuthenticatedUser, get_current_user
+from app.core.config import settings
+from app.db.database import close_db, init_db
+from app.services.backend_client import close_backend_client
+from app.core.logging_config import get_logger, setup_logging
+from app.schemas.schemas import ChatRequest, ChatResponse, ProductFromImageResponse, ProductImageItem
+import app.services.ai_service as ai_service
+from app.services.ai_service import client
 
 setup_logging()
 logger = get_logger(__name__)

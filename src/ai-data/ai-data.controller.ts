@@ -7,7 +7,7 @@ import {
   ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiHeader, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 

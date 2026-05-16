@@ -17,13 +17,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools.dashboard import get_dashboard_summary
-from tools.products import get_low_stock_products, get_top_products, search_products
-from tools.sales import get_sales_report, get_profit_loss, get_sales_returns
-from tools.inventory import get_inventory_value, get_stock_transactions
-from tools.categories import get_categories
-from tools.suppliers import get_suppliers, get_purchase_orders
-from tools.users import get_users, get_activity_logs
+from app.tools.dashboard import get_dashboard_summary
+from app.tools.products import get_low_stock_products, get_top_products, search_products
+from app.tools.sales import get_sales_report, get_profit_loss, get_sales_returns
+from app.tools.inventory import get_inventory_value, get_stock_transactions
+from app.tools.categories import get_categories
+from app.tools.suppliers import get_suppliers, get_purchase_orders
+from app.tools.users import get_users, get_activity_logs
 
 TOOL_REGISTRY: dict[str, Any] = {
     "get_dashboard_summary": get_dashboard_summary,
