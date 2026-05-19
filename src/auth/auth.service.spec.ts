@@ -415,10 +415,16 @@ describe('AuthService', () => {
       prisma.tenantUser.findFirst.mockResolvedValue(null);
 
       const mockTx = {
-        platformUser: { create: jest.fn().mockResolvedValue({ id: 'pu-1', email: 'new@example.com' }) },
+        platformUser: {
+          create: jest.fn().mockResolvedValue({ id: 'pu-1', email: 'new@example.com' }),
+        },
         tenant: { create: jest.fn().mockResolvedValue({ id: 't-1', name: 'New Store' }) },
         tenantMember: { create: jest.fn().mockResolvedValue({}) },
-        tenantUser: { create: jest.fn().mockResolvedValue({ id: 'tu-1', username: 'newuser', role: 'ADMIN', tenantId: 't-1' }) },
+        tenantUser: {
+          create: jest
+            .fn()
+            .mockResolvedValue({ id: 'tu-1', username: 'newuser', role: 'ADMIN', tenantId: 't-1' }),
+        },
       };
       prisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
       jwtService.sign.mockReturnValue('mock.jwt.token');
@@ -431,7 +437,10 @@ describe('AuthService', () => {
     });
 
     it('should throw ConflictException when email is already registered', async () => {
-      prisma.platformUser.findUnique.mockResolvedValue({ id: 'existing', email: 'new@example.com' });
+      prisma.platformUser.findUnique.mockResolvedValue({
+        id: 'existing',
+        email: 'new@example.com',
+      });
 
       await expect(service.register(registerDto)).rejects.toThrow('Email sudah terdaftar');
     });
@@ -468,7 +477,12 @@ describe('AuthService', () => {
         },
         tenantUser: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'tu-1', username: 'storeadmin', role: 'ADMIN', tenantId: 't-1' }),
+          create: jest.fn().mockResolvedValue({
+            id: 'tu-1',
+            username: 'storeadmin',
+            role: 'ADMIN',
+            tenantId: 't-1',
+          }),
         },
         tenantMember: { create: jest.fn().mockResolvedValue({}) },
       };
@@ -490,7 +504,9 @@ describe('AuthService', () => {
       };
       prisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
 
-      await expect(service.createStore(dto, 'platform-user-id')).rejects.toThrow('Store name already registered');
+      await expect(service.createStore(dto, 'platform-user-id')).rejects.toThrow(
+        'Store name already registered',
+      );
     });
 
     it('should throw ConflictException when username already exists', async () => {
@@ -500,7 +516,9 @@ describe('AuthService', () => {
       };
       prisma.$transaction.mockImplementation(async (cb: any) => cb(mockTx));
 
-      await expect(service.createStore(dto, 'platform-user-id')).rejects.toThrow('Username already registered');
+      await expect(service.createStore(dto, 'platform-user-id')).rejects.toThrow(
+        'Username already registered',
+      );
     });
   });
 });

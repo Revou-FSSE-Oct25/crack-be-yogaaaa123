@@ -114,7 +114,7 @@ export class AiService {
           const statusCode: number = axiosError.response.status;
           const errorData = axiosError.response.data;
 
-          if (statusCode === HttpStatus.UNAUTHORIZED) {
+          if (statusCode === (HttpStatus.UNAUTHORIZED as number)) {
             throw new BadGatewayException({
               statusCode: HttpStatus.BAD_GATEWAY,
               message: 'AI service authentication failed',

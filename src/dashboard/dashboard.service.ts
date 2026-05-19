@@ -119,7 +119,7 @@ export class DashboardService {
       ORDER BY date ASC
     `;
 
-    return result.map((row) => ({
+    return result.map((row: any) => ({
       date: row.date,
       totalRevenue: Number(row.revenue),
       totalProfit: Number(row.profit),

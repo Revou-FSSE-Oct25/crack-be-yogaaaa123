@@ -87,7 +87,7 @@ export class PurchaseService {
   async createPurchaseOrder(data: CreatePurchaseOrderDto) {
     const totalPrice = this.calculateTotalPrice(data.items);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const purchaseOrder = await tx.purchaseOrder.create({
         data: {
           orderNumber: data.orderNumber,
@@ -129,7 +129,7 @@ export class PurchaseService {
   async createPendingPurchaseOrder(data: CreatePurchaseOrderDto) {
     const totalPrice = this.calculateTotalPrice(data.items);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       return tx.purchaseOrder.create({
         data: {
           orderNumber: data.orderNumber,
@@ -168,7 +168,7 @@ export class PurchaseService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const updatedOrder = await tx.purchaseOrder.update({
         where: { id: orderId },
         data: {
@@ -294,15 +294,15 @@ export class PurchaseService {
     const totalOrders = purchaseOrders.length;
 
     const totalSpentDecimal = purchaseOrders.reduce(
-      (sum, order) => sum.add(order.totalPrice),
+      (sum: any, order: any) => sum.add(order.totalPrice),
       new Prisma.Decimal(0),
     );
     const totalSpent = totalSpentDecimal.toNumber();
 
     const productsPurchased = new Map<string, { quantity: number; total: Prisma.Decimal }>();
 
-    purchaseOrders.forEach((order) => {
-      order.items.forEach((item) => {
+    purchaseOrders.forEach((order: any) => {
+      order.items.forEach((item: any) => {
         const current = productsPurchased.get(item.productId) || {
           quantity: 0,
           total: new Prisma.Decimal(0),
@@ -326,7 +326,7 @@ export class PurchaseService {
   }
 
   async cancelPurchaseOrder(orderId: string, tenantId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const updateResult = await tx.purchaseOrder.updateMany({
         where: {
           id: orderId,

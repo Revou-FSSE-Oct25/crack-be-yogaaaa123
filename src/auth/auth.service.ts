@@ -79,7 +79,7 @@ export class AuthService {
   }
 
   async createStore(dto: CreateStoreDto, platformUserId: string) {
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx: any) => {
       const slug = dto.storeName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -94,8 +94,16 @@ export class AuthService {
       const salt = await bcrypt.genSalt(12);
       const passwordHash = await bcrypt.hash(dto.password, salt);
 
+      const selectedPlan = dto.plan?.toLowerCase() === 'ultra' ? 'ultra' : (dto.plan?.toLowerCase() === 'pro' ? 'pro' : 'free');
+      const initialTokens = selectedPlan === 'ultra' ? 10000 : 0;
+
       const tenant = await tx.tenant.create({
-        data: { name: dto.storeName, slug, aiTokens: 10000 },
+        data: { 
+          name: dto.storeName, 
+          slug, 
+          aiTokens: initialTokens,
+          plan: selectedPlan,
+        },
       });
       const tenantUser = await tx.tenantUser.create({
         data: {
@@ -275,7 +283,7 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto) {
-    const { storeName, username, email, password, displayName } = registerDto;
+    const { storeName, username, email, password, displayName, plan } = registerDto;
 
     const existingPlatformUser = await this.prisma.platformUser.findUnique({
       where: { email },
@@ -305,7 +313,10 @@ export class AuthService {
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const selectedPlan = plan?.toLowerCase() === 'ultra' ? 'ultra' : (plan?.toLowerCase() === 'pro' ? 'pro' : 'free');
+    const initialTokens = selectedPlan === 'ultra' ? 10000 : 0;
+
+    const result = await this.prisma.$transaction(async (tx: any) => {
       const platformUser = await tx.platformUser.create({
         data: {
           email,
@@ -318,6 +329,8 @@ export class AuthService {
         data: {
           name: storeName,
           slug,
+          plan: selectedPlan,
+          aiTokens: initialTokens,
         },
       });
 

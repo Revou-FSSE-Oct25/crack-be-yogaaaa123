@@ -29,8 +29,8 @@ export class ReportsService {
 
     const summary = {
       totalOrders: orders.length,
-      totalRevenue: orders.reduce((sum, o) => sum + Number(o.totalPrice), 0),
-      totalProfit: orders.reduce((sum, o) => sum + Number(o.totalProfit), 0),
+      totalRevenue: orders.reduce((sum: any, o: any) => sum + Number(o.totalPrice), 0),
+      totalProfit: orders.reduce((sum: any, o: any) => sum + Number(o.totalProfit), 0),
     };
 
     return { summary, orders };
@@ -48,8 +48,8 @@ export class ReportsService {
 
     const summary = {
       totalProducts: products.length,
-      totalStock: products.reduce((sum, p) => sum + p.stockQuantity, 0),
-      lowStock: products.filter((p) => p.stockQuantity <= p.reorderLevel).length,
+      totalStock: products.reduce((sum: any, p: any) => sum + p.stockQuantity, 0),
+      lowStock: products.filter((p: any) => p.stockQuantity <= p.reorderLevel).length,
     };
 
     return { summary, products };
@@ -71,9 +71,9 @@ export class ReportsService {
       },
     });
 
-    const totalRevenue = orders.reduce((sum, o) => sum + Number(o.totalPrice), 0);
-    const totalCogs = orders.reduce((sum, o) => sum + Number(o.totalCogs), 0);
-    const totalProfit = orders.reduce((sum, o) => sum + Number(o.totalProfit), 0);
+    const totalRevenue = orders.reduce((sum: any, o: any) => sum + Number(o.totalPrice), 0);
+    const totalCogs = orders.reduce((sum: any, o: any) => sum + Number(o.totalCogs), 0);
+    const totalProfit = orders.reduce((sum: any, o: any) => sum + Number(o.totalProfit), 0);
     const averageOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
 
     return {
@@ -151,7 +151,7 @@ export class ReportsService {
       orderBy: { name: 'asc' },
     });
 
-    const records = products.map((p) => ({
+    const records = products.map((p: any) => ({
       SKU: p.sku,
       'Product Name': p.name,
       Category: p.category?.name || '',
@@ -191,7 +191,7 @@ export class ReportsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const records = orders.map((o) => ({
+    const records = orders.map((o: any) => ({
       'Order Number': o.orderNumber,
       Date: o.createdAt.toISOString(),
       Revenue: Number(o.totalPrice),

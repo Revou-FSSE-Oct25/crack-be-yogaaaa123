@@ -23,6 +23,7 @@ model Tenant {
   id           String   @id @default(uuid())
   name         String   @unique
   slug         String   @unique
+  plan         String   @default("free") // free, pro, ultra
   aiApiKey     String?  // API key untuk AI service (billing per toko)
   aiTokens     Int      @default(0)  // Total token AI untuk toko ini
   aiTokensUsed Int      @default(0)  // Token AI yang sudah terpakai

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -9,8 +9,19 @@ import type { Product } from '@prisma/client';
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
-  create(createProductDto: CreateProductDto, tenantId: string): Promise<Product> {
+  async create(createProductDto: CreateProductDto, tenantId: string): Promise<Product> {
     const prisma = this.prisma.getClient(tenantId);
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (tenant?.plan === 'free') {
+      const productCount = await prisma.product.count({ where: { tenantId } });
+      if (productCount >= 50) {
+        throw new ForbiddenException(
+          'Limit 50 produk tercapai untuk paket Free. Silakan upgrade ke Pro atau Ultra.',
+        );
+      }
+    }
+
     return prisma.product.create({
       data: {
         ...createProductDto,

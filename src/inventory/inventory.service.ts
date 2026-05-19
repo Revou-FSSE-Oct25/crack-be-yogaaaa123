@@ -40,7 +40,7 @@ export class InventoryService {
       operation = quantityChange < 0 ? 'decrement' : 'increment';
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       if (operation === 'decrement') {
         let updatedProduct;
         try {

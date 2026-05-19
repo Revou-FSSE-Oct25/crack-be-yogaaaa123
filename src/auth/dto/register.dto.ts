@@ -52,4 +52,13 @@ export class RegisterDto {
   @IsString()
   @MaxLength(100)
   displayName?: string;
+
+  @ApiProperty({
+    description: 'Subscription plan (e.g., free, pro, ultra)',
+    required: false,
+    default: 'free',
+  })
+  @IsOptional()
+  @IsString()
+  plan?: string;
 }

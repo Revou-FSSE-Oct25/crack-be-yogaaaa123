@@ -34,7 +34,7 @@ export class AdminService {
     ]);
 
     return {
-      data: tenants.map((t) => ({
+      data: tenants.map((t: any) => ({
         id: t.id,
         name: t.name,
         slug: t.slug,
@@ -103,8 +103,8 @@ export class AdminService {
         totalStockTransactions: tenant._count.stockTransactions,
       },
       owners: tenant.members
-        .filter((m) => m.role === 'OWNER')
-        .map((m) => ({
+        .filter((m: any) => m.role === 'OWNER')
+        .map((m: any) => ({
           email: m.platformUser.email,
           name: m.platformUser.name,
         })),
@@ -120,7 +120,7 @@ export class AdminService {
       throw new NotFoundException('Tenant tidak ditemukan');
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: any) => {
       const now = new Date();
 
       await tx.tenantUser.updateMany({ where: { tenantId: id }, data: { deletedAt: now } });

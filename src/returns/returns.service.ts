@@ -64,7 +64,7 @@ export class ReturnsService {
       });
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const salesReturn = await tx.salesReturn.create({
         data: {
           returnNumber: data.returnNumber,

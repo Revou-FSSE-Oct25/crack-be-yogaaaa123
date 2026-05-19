@@ -134,7 +134,7 @@ export class SalesService {
   }
 
   async createSalesOrder(data: CreateSalesOrderData) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
         await this.buildOrderItemsData(data.items, tx, data.tenantId);
 
@@ -165,7 +165,7 @@ export class SalesService {
   }
 
   async createPendingSalesOrder(data: CreateSalesOrderData) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const { orderItemsToCreate, totalCogs, totalProfit, totalPrice } =
         await this.buildOrderItemsData(data.items, tx, data.tenantId);
 
@@ -186,7 +186,7 @@ export class SalesService {
   }
 
   async completeSalesOrder(orderId: string, userId: string, tenantId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const salesOrder = await tx.salesOrder.findFirst({
         where: { id: orderId, status: 'PENDING', tenantId },
         include: { items: true },
@@ -210,7 +210,7 @@ export class SalesService {
         data: { status: 'COMPLETED' },
       });
 
-      const itemsForStockOut = salesOrder.items.map((item) => ({
+      const itemsForStockOut = salesOrder.items.map((item: any) => ({
         productId: item.productId,
         quantity: item.quantity,
       }));
@@ -292,7 +292,7 @@ export class SalesService {
   }
 
   async cancelSalesOrder(orderId: string, tenantId: string) {
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx: any) => {
       const updateResult = await tx.salesOrder.updateMany({
         where: {
           id: orderId,

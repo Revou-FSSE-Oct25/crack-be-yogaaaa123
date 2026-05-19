@@ -80,7 +80,7 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
-        next: (responseBody) => {
+        next: (_responseBody) => {
           (async () => {
             try {
               if (needsSnapshot) {

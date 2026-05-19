@@ -24,4 +24,9 @@ export class CreateStoreDto {
   @IsString()
   @IsOptional()
   displayName?: string;
+
+  @ApiPropertyOptional({ description: 'Subscription plan', example: 'free' })
+  @IsString()
+  @IsOptional()
+  plan?: string;
 }

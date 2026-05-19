@@ -195,7 +195,7 @@ export class AiDataController {
         },
       });
 
-      const productMap = new Map(products.map((p) => [p.id, p]));
+      const productMap = new Map<string, any>(products.map((p: any) => [p.id, p]));
 
       return {
         products: topProducts.map((tp) => {
@@ -266,7 +266,7 @@ export class AiDataController {
       });
 
       return {
-        products: products.map((p) => ({
+        products: products.map((p: any) => ({
           id: p.id,
           name: p.name,
           sku: p.sku,
@@ -344,7 +344,7 @@ export class AiDataController {
       return {
         total_orders: aggregate._count,
         total_revenue: Number(aggregate._sum?.totalPrice || 0),
-        orders: orders.map((o) => ({
+        orders: orders.map((o: any) => ({
           id: o.id,
           order_number: o.orderNumber,
           total: Number(o.totalPrice),
@@ -444,7 +444,7 @@ export class AiDataController {
       });
 
       return {
-        categories: categories.map((c) => ({
+        categories: categories.map((c: any) => ({
           id: c.id,
           name: c.name,
           product_count: c._count.products,
@@ -486,7 +486,7 @@ export class AiDataController {
       });
 
       return {
-        suppliers: suppliers.map((s) => ({
+        suppliers: suppliers.map((s: any) => ({
           id: s.id,
           name: s.name,
           contact_person: s.contactName,
@@ -531,7 +531,7 @@ export class AiDataController {
       });
 
       return {
-        users: users.map((u) => ({
+        users: users.map((u: any) => ({
           id: u.id,
           username: u.username,
           role: u.role,
